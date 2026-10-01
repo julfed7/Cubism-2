@@ -87,9 +87,10 @@ func _physics_process(delta: float) -> void:
 
 func _get_move_direction() -> Vector2:
 	var direction: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-	if direction.length_squared() > 1.0:
-		direction = direction.normalized()
-	return direction
+	var joystick: ScreenJoystick = get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.value.length_squared() > 0.0:
+		direction = joystick.value
+	return direction.limit_length(1.0)
 
 
 func _process(delta: float) -> void:
