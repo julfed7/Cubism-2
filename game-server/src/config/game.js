@@ -1,0 +1,52 @@
+module.exports = Object.freeze({
+  world: { width: 1325, height: 968 },
+  player: { radius: 16, speed: 200, maxHp: 100, respawnMs: 2000 },
+  interactionRange: 80,
+  maxInventorySlots: 9,
+  maps: {
+    map1: {
+      name: 'Map 1',
+      spawns: [[180, 150], [240, 150], [180, 210], [240, 210]],
+      zombies: [[420, 240], [760, 220], [1110, 280], [1080, 700], [780, 820], [360, 760]],
+      chests: [[600, 500], [1120, 600]],
+    },
+    map2: {
+      name: 'Map 2',
+      spawns: [[180, 150], [240, 150], [180, 210], [240, 210]],
+      zombies: [[500, 300], [920, 320], [420, 740], [980, 760]],
+      chests: [[620, 460], [1040, 560]],
+    },
+  },
+  zombie: {
+    radius: 18,
+    hp: 30,
+    speed: 100,
+    attackRange: 80,
+    attackDamage: 10,
+    attackCooldownMs: 1000,
+  },
+  weapons: {
+    pistol: { name: 'Pistol', weaponType: 'pistol', damage: 20, fireRateMs: 350, bulletSpeed: 700, magazineSize: 12, startingAmmo: 24, pellets: 1, spreadDegrees: 0 },
+    smg: { name: 'SMG', weaponType: 'smg', damage: 9, fireRateMs: 80, bulletSpeed: 650, magazineSize: 30, startingAmmo: 60, pellets: 1, spreadDegrees: 0 },
+    shotgun: { name: 'Shotgun', weaponType: 'shotgun', damage: 12, fireRateMs: 750, bulletSpeed: 600, magazineSize: 6, startingAmmo: 12, pellets: 8, spreadDegrees: 15 },
+    rifle: { name: 'Rifle', weaponType: 'rifle', damage: 30, fireRateMs: 220, bulletSpeed: 900, magazineSize: 20, startingAmmo: 40, pellets: 1, spreadDegrees: 0 },
+  },
+  items: {
+    medkit: { name: 'Medkit', type: 'healing', heal: 50, maxStack: 5 },
+    ammo_pistol: { name: 'Pistol Ammo', type: 'ammo', ammoFor: 'pistol', maxStack: 90 },
+    ammo_smg: { name: 'SMG Ammo', type: 'ammo', ammoFor: 'smg', maxStack: 120 },
+    ammo_shotgun: { name: 'Shotgun Shells', type: 'ammo', ammoFor: 'shotgun', maxStack: 40 },
+    ammo_rifle: { name: 'Rifle Ammo', type: 'ammo', ammoFor: 'rifle', maxStack: 90 },
+    coin: { name: 'Coin', type: 'currency', maxStack: 999 },
+  },
+  chestLootTable: [
+    { id: 'pistol', weight: 20 },
+    { id: 'smg', weight: 15 },
+    { id: 'shotgun', weight: 10 },
+    { id: 'rifle', weight: 5 },
+    { id: 'medkit', weight: 25 },
+    { id: 'ammo_pistol', weight: 20 },
+    { id: 'ammo_smg', weight: 15 },
+    { id: 'ammo_shotgun', weight: 10 },
+  ],
+});

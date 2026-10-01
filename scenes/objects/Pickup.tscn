@@ -1,0 +1,80 @@
+[gd_scene format=3 uid="uid://dl5i5j80rwbuo"]
+
+[ext_resource type="Script" uid="uid://bgs22d5owu0gj" path="res://scripts/pickup.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://coig241jyr26b" path="res://sprites/loot.png" id="2_noox4"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qogqo"]
+atlas = ExtResource("2_noox4")
+region = Rect2(0, 0, 87, 70)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fqths"]
+atlas = ExtResource("2_noox4")
+region = Rect2(87, 0, 87, 70)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t18rn"]
+atlas = ExtResource("2_noox4")
+region = Rect2(174, 0, 87, 70)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1nkyl"]
+atlas = ExtResource("2_noox4")
+region = Rect2(261, 0, 87, 70)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_ynw7a"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_qogqo")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fqths")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t18rn")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1nkyl")
+}],
+"loop": 1,
+"name": &"idle",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="Shape_pickup"]
+radius = 15.0
+
+[sub_resource type="SceneReplicationConfig" id="PickupReplication"]
+properties/0/path = NodePath(".:item_id")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+properties/1/path = NodePath(".:amount")
+properties/1/spawn = true
+properties/1/replication_mode = 0
+properties/2/path = NodePath(".:pickup_id")
+properties/2/spawn = true
+properties/2/replication_mode = 0
+properties/3/path = NodePath(".:position")
+properties/3/spawn = true
+properties/3/replication_mode = 0
+
+[node name="Pickup" type="Area2D" unique_id=1843045578]
+collision_layer = 16
+collision_mask = 2
+script = ExtResource("1")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1972542918]
+texture_filter = 1
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1941087222]
+sprite_frames = SubResource("SpriteFrames_ynw7a")
+animation = &"idle"
+autoplay = "idle"
+frame_progress = 0.2921839
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1754144720]
+shape = SubResource("Shape_pickup")
+
+[node name="PickupAudio" type="AudioStreamPlayer2D" parent="."]
+max_distance = 600.0
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("PickupReplication")

@@ -1,0 +1,60 @@
+[gd_scene load_steps=6 format=3 uid="uid://cpr72auxao65g"]
+
+[ext_resource type="Script" uid="uid://kucvmlqr7g4" path="res://scripts/zombie.gd" id="1_zombie"]
+[ext_resource type="Script" uid="uid://e4p86nw0r0q4" path="res://scripts/health.gd" id="2_health"]
+[ext_resource type="SpriteFrames" uid="uid://1sl68mv1rwql" path="res://sprites/zombie/ZombieFrames.tres" id="3_frames"]
+
+[sub_resource type="RectangleShape2D" id="ZombieShape"]
+size = Vector2(40, 40)
+
+[sub_resource type="SceneReplicationConfig" id="ZombieReplication"]
+properties/0/path = NodePath(".:network_health")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:network_alive")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:is_attacking")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:facing_left")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+
+[node name="Zombie" type="CharacterBody2D" unique_id=401401954]
+collision_layer = 4
+collision_mask = 3
+motion_mode = 1
+script = ExtResource("1_zombie")
+attack_range = 80.0
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=149625003]
+texture_filter = 1
+sprite_frames = ExtResource("3_frames")
+animation = &"idle"
+autoplay = "idle"
+frame_progress = 0.14195524
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1894101434]
+shape = SubResource("ZombieShape")
+
+[node name="Health" type="Node" parent="." unique_id=1522299538]
+script = ExtResource("2_health")
+max_health = 30.0
+
+[node name="HitAudio" type="AudioStreamPlayer2D" parent="." unique_id=1396011097]
+max_distance = 900.0
+
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=181181483]
+max_distance = 900.0
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 60.0
+radius = 20.0
+avoidance_enabled = true
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("ZombieReplication")
+replication_interval = 0.05
+

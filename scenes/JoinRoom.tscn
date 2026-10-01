@@ -1,0 +1,201 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/join_room.gd" id="1_script"]
+[ext_resource type="Theme" path="res://scenes/MenuTheme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://sprites/modes/classic.png" id="3_classic"]
+[ext_resource type="Texture2D" path="res://sprites/modes/battle_royale.png" id="4_battle"]
+[ext_resource type="Texture2D" path="res://sprites/maps/island_preview.png" id="5_island"]
+[ext_resource type="Texture2D" path="res://sprites/maps/city_preview.png" id="6_city"]
+
+[node name="JoinRoom" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.035, 0.12, 0.18, 1)
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 24.0
+offset_bottom = 82.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 40
+text = "ВЫБЕРИ РЕЖИМ"
+horizontal_alignment = 1
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 72.0
+offset_bottom = -74.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ModeScreen" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(940, 0)
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Hint" type="Label" parent="Center/ModeScreen"]
+layout_mode = 2
+text = "Сначала выбери правила матча"
+horizontal_alignment = 1
+
+[node name="Cards" type="HBoxContainer" parent="Center/ModeScreen"]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="Classic" type="TextureButton" parent="Center/ModeScreen/Cards"]
+custom_minimum_size = Vector2(440, 270)
+layout_mode = 2
+texture_normal = ExtResource("3_classic")
+ignore_texture_size = true
+stretch_mode = 6
+
+[node name="Label" type="Label" parent="Center/ModeScreen/Cards/Classic"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 30
+text = "КЛАССИКА"
+horizontal_alignment = 1
+
+[node name="BattleRoyale" type="TextureButton" parent="Center/ModeScreen/Cards"]
+custom_minimum_size = Vector2(440, 270)
+layout_mode = 2
+texture_normal = ExtResource("4_battle")
+ignore_texture_size = true
+stretch_mode = 6
+
+[node name="Label" type="Label" parent="Center/ModeScreen/Cards/BattleRoyale"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 30
+text = "КОРОЛЕВСКАЯ БИТВА"
+horizontal_alignment = 1
+
+[node name="MapScreen" type="VBoxContainer" parent="Center"]
+visible = false
+custom_minimum_size = Vector2(940, 0)
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Cards" type="HBoxContainer" parent="Center/MapScreen"]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="Island" type="TextureButton" parent="Center/MapScreen/Cards"]
+custom_minimum_size = Vector2(440, 270)
+layout_mode = 2
+texture_normal = ExtResource("5_island")
+ignore_texture_size = true
+stretch_mode = 6
+
+[node name="Label" type="Label" parent="Center/MapScreen/Cards/Island"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 30
+text = "ISLAND"
+horizontal_alignment = 1
+
+[node name="City" type="TextureButton" parent="Center/MapScreen/Cards"]
+custom_minimum_size = Vector2(440, 270)
+layout_mode = 2
+texture_normal = ExtResource("6_city")
+ignore_texture_size = true
+stretch_mode = 6
+
+[node name="Label" type="Label" parent="Center/MapScreen/Cards/City"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 30
+text = "CITY"
+horizontal_alignment = 1
+
+[node name="ModeOption" type="OptionButton" parent="Center/MapScreen"]
+visible = false
+layout_mode = 2
+
+[node name="MapOption" type="OptionButton" parent="Center/MapScreen"]
+visible = false
+layout_mode = 2
+
+[node name="Play" type="Button" parent="Center/MapScreen"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+text = "ИГРАТЬ"
+
+[node name="BackToModes" type="Button" parent="Center/MapScreen"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "Назад к режимам"
+
+[node name="Back" type="Button" parent="."]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 144.0
+offset_bottom = 84.0
+text = "<-"
+
+[node name="Status" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -58.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 0
+horizontal_alignment = 1
+
+[connection signal="pressed" from="Center/ModeScreen/Cards/Classic" to="." method="_on_classic_pressed"]
+[connection signal="pressed" from="Center/ModeScreen/Cards/BattleRoyale" to="." method="_on_battle_royale_pressed"]
+[connection signal="pressed" from="Center/MapScreen/Cards/Island" to="." method="_on_island_pressed"]
+[connection signal="pressed" from="Center/MapScreen/Cards/City" to="." method="_on_city_pressed"]
+[connection signal="pressed" from="Center/MapScreen/Play" to="." method="_on_play_pressed"]
+[connection signal="pressed" from="Center/MapScreen/BackToModes" to="." method="_on_back_to_modes_pressed"]
+[connection signal="pressed" from="Back" to="." method="_on_back_pressed"]

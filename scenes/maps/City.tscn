@@ -1,0 +1,8 @@
+[gd_scene load_steps=3 format=3]
+[ext_resource type="TileSet" path="res://tilemaps/tileset.tres" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/objects/PlayerSpawn.tscn" id="2"]
+[node name="City" type="Node2D"]
+[node name="TileMapLayer" type="TileMapLayer" parent="." groups=["ground_tiles"]]
+tile_set = ExtResource("1")
+[node name="PlayerSpawn" parent="." instance=ExtResource("2")]
+position = Vector2(100, 100)

@@ -1,0 +1,3 @@
+.godot/
+game-server/node_modules/
+game-server/.env

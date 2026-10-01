@@ -1,0 +1,79 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="Texture2D" path="res://sprites/player.png" id="2_texture"]
+[ext_resource type="Script" path="res://scripts/health.gd" id="3_health"]
+[ext_resource type="Script" path="res://scripts/inventory.gd" id="4_inventory"]
+
+[sub_resource type="RectangleShape2D" id="PlayerCollision"]
+size = Vector2(40, 40)
+
+[sub_resource type="SceneReplicationConfig" id="MovementReplication"]
+properties/0/path = NodePath(".:network_aim_angle")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:current_weapon_slot")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:network_weapon_id")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+
+[sub_resource type="SceneReplicationConfig" id="StateReplication"]
+properties/0/path = NodePath(".:hp")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:visible")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:network_inventory")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:magazine")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+properties/4/path = NodePath(".:ammo_reserve")
+properties/4/spawn = true
+properties/4/replication_mode = 2
+
+[node name="Player" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 5
+motion_mode = 1
+script = ExtResource("1_player")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_texture")
+texture_filter = 1
+
+[node name="WeaponPivot" type="Node2D" parent="."]
+
+[node name="WeaponSprite" type="Sprite2D" parent="WeaponPivot"]
+visible = false
+position = Vector2(20, 0)
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("PlayerCollision")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("3_health")
+
+[node name="Inventory" type="Node" parent="."]
+script = ExtResource("4_inventory")
+
+[node name="ShootAudio" type="AudioStreamPlayer2D" parent="."]
+max_distance = 900.0
+bus = &"SFX"
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 5.0
+
+[node name="MovementSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("MovementReplication")
+replication_interval = 0.05
+
+[node name="StateSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("StateReplication")
+replication_interval = 0.05

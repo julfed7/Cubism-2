@@ -1,0 +1,20 @@
+[gd_resource type="Theme" format=3 uid="uid://c6m4t76cj6x0f"]
+
+[sub_resource type="StyleBoxFlat" id="Style_button"]
+bg_color = Color(0.97, 0.97, 0.97, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.04, 0.04, 0.04, 1)
+
+[resource]
+default_font_size = 28
+Button/colors/font_color = Color(0, 0, 0, 1)
+Button/colors/font_focus_color = Color(0, 0, 0, 1)
+Button/colors/font_hover_color = Color(0, 0, 0, 1)
+Button/colors/font_pressed_color = Color(0, 0, 0, 1)
+Button/styles/hover = SubResource("Style_button")
+Button/styles/normal = SubResource("Style_button")
+Button/styles/pressed = SubResource("Style_button")
+Label/colors/font_color = Color(0, 0, 0, 1)
