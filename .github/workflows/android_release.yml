@@ -1,0 +1,74 @@
+name: Build and Release Android APK
+
+# Запускать при пуше тега (например, v1.0.0)
+on:
+  push:
+    tags:
+      - 'v*'
+  # Или при ручном запуске (вкладка Actions -> Build and Release Android APK -> Run workflow)
+  workflow_dispatch:
+
+permissions:
+  contents: write # Нужно для создания релиза и загрузки APK
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 1. Установка Godot 4 (замени версию на свою)
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: "4.7.2"
+          use-dotnet: false
+          include-templates: true
+
+      # 2. Восстановление keystore из секретов
+      # ВАЖНО: Сначала создай секреты в настройках репозитория (Settings -> Secrets and variables -> Actions)
+      # ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+      - name: Restore Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          echo "Keystore restored."
+
+      # 3. Настройка путей к keystore в export_presets.cfg
+      - name: Configure Keystore in export preset
+        run: |
+          sed -i "s|keystore/release=\".*\"|keystore/release=\"$(pwd)/release.keystore\"|g" export_presets.cfg
+          sed -i "s|keystore/release_user=\".*\"|keystore/release_user=\"${{ secrets.ANDROID_KEY_ALIAS }}\"|g" export_presets.cfg
+          sed -i "s|keystore/release_password=\".*\"|keystore/release_password=\"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}\"|g" export_presets.cfg
+          echo "Keystore paths configured."
+
+      # 4. Автоматическое увеличение version/code (по желанию)
+      # Эта строка берет дату/время и делает version code (например, 202610011530)
+      - name: Auto-increment version code
+        run: |
+          VERSION_CODE=$(date -u +%Y%m%d%H%M)
+          sed -i "s/^version\/code=.*/version\/code=${VERSION_CODE}/g" export_presets.cfg
+          echo "Version code set to ${VERSION_CODE}"
+
+      # 5. Импорт проекта (нужен для сборки)
+      - name: Import Project
+        run: godot --headless --import
+
+      # 6. Сборка APK
+      # Убедись, что имя пресета в кавычках ("Android") точно совпадает с названием в Godot (Project -> Export)
+      - name: Build Android APK
+        run: |
+          mkdir -p builds
+          godot --headless --export-release "Android" builds/game.apk
+
+      # 7. Создание релиза и загрузка APK
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          # Имя тега: если запущено по тегу - использует его, если вручную - создаст тег на основе даты
+          tag_name: ${{ github.ref_name || format('v{0}', github.run_number) }}
+          name: Release ${{ github.ref_name || format('v{0}', github.run_number) }}
+          # Автоматически генерировать список изменений
+          generate_release_notes: true
+          # Путь к файлу APK, который нужно прикрепить
+          files: builds/game.apk
