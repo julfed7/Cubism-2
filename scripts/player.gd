@@ -6,7 +6,7 @@ signal player_died(player_id: int)
 const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
 const SNAPSHOT_INTERVAL: float = 0.033
 
-@export var speed: float = 250.0
+@export var speed: float = 500.0
 @export var peer_id: String = "1"
 @export var is_local: bool = true
 
