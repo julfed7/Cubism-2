@@ -30,8 +30,6 @@ jobs:
           echo "=== export_presets.cfg exists? ==="
           if [ -f export_presets.cfg ]; then
             echo "YES"
-            echo "=== keystore lines in export_presets.cfg ==="
-            grep -n "keystore" export_presets.cfg || echo "NO KEYSTORE LINES FOUND"
           else
             echo "NO export_presets.cfg!"
             exit 1
@@ -50,13 +48,30 @@ jobs:
       - name: Configure Keystore in export_presets.cfg
         run: |
           echo "=== BEFORE ==="
-          grep "keystore" export_presets.cfg
+          grep "keystore" export_presets.cfg || echo "NO KEYSTORE LINES FOUND"
           echo ""
+          
+          # Если строк keystore нет — добавляем после package/unique_name
+          if ! grep -q "keystore/release=" export_presets.cfg; then
+            echo "Добавляю строки keystore..."
+            sed -i '/^package\/unique_name=/a keystore/release=""\nkeystore/release_user=""\nkeystore/release_password=""' export_presets.cfg
+          fi
+          
+          # Теперь заменяем значения
           sed -i "s|keystore/release=\".*\"|keystore/release=\"$(pwd)/release.keystore\"|g" export_presets.cfg
           sed -i "s|keystore/release_user=\".*\"|keystore/release_user=\"${{ secrets.ANDROID_KEY_ALIAS }}\"|g" export_presets.cfg
           sed -i "s|keystore/release_password=\".*\"|keystore/release_password=\"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}\"|g" export_presets.cfg
+          
           echo "=== AFTER ==="
-          grep "keystore" export_presets.cfg
+          grep "keystore" export_presets.cfg || echo "STILL NO KEYSTORE - ошибка!"
+          echo ""
+          
+          # Проверим, что путь к keystore подставился
+          if ! grep -q "release.keystore" export_presets.cfg; then
+            echo "❌ ПУТЬ К KEYSTORE НЕ ПОДСТАВИЛСЯ!"
+            exit 1
+          fi
+          echo "✅ Keystore настроен."
 
       - name: Auto-increment version
         run: |
