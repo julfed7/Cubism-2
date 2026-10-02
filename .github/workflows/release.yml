@@ -1,0 +1,54 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: "4.7.2"
+          use-dotnet: false
+          include-templates: true
+
+      - name: Restore Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+
+      - name: Configure Keystore
+        run: |
+          sed -i "s|keystore/release=\".*\"|keystore/release=\"$(pwd)/release.keystore\"|g" export_presets.cfg
+          sed -i "s|keystore/release_user=\".*\"|keystore/release_user=\"${{ secrets.ANDROID_KEY_ALIAS }}\"|g" export_presets.cfg
+          sed -i "s|keystore/release_password=\".*\"|keystore/release_password=\"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}\"|g" export_presets.cfg
+
+      - name: Auto-increment version
+        run: |
+          VERSION_CODE=$(date -u +%Y%m%d%H%M)
+          sed -i "s/^version\/code=.*/version\/code=${VERSION_CODE}/g" export_presets.cfg
+
+      - name: Import Project
+        run: godot --headless --import
+
+      - name: Build APK
+        run: |
+          mkdir -p builds
+          godot --headless --export-release "Android" builds/game.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build #${{ github.run_number }}
+          generate_release_notes: true
+          files: builds/game.apk
