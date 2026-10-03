@@ -1,0 +1,93 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/brawler_select.gd" id="1_script"]
+[ext_resource type="Theme" path="res://scenes/MenuTheme.tres" id="2_theme"]
+
+[node name="BrawlerSelect" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.025, 0.07, 0.13, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(920, 0)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Center/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 42
+text = "ВЫБЕРИ БОЙЦА"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Center/Content"]
+layout_mode = 2
+text = "Каждый боец меняет стиль игры. Супер заряжается нанесённым уроном."
+horizontal_alignment = 1
+
+[node name="Cards" type="HBoxContainer" parent="Center/Content"]
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Shelly" type="Button" parent="Center/Content/Cards"]
+custom_minimum_size = Vector2(285, 170)
+layout_mode = 2
+text = "ШЕЛЛИ\n\nШТУРМОВИК\nДробовик и отбрасывание"
+
+[node name="Colt" type="Button" parent="Center/Content/Cards"]
+custom_minimum_size = Vector2(285, 170)
+layout_mode = 2
+text = "КОЛЬТ\n\nСТРЕЛОК\nСерия быстрых пуль"
+
+[node name="Spike" type="Button" parent="Center/Content/Cards"]
+custom_minimum_size = Vector2(285, 170)
+layout_mode = 2
+text = "СПАЙК\n\nКОНТРОЛЬ\nЛечение и урон по области"
+
+[node name="Selected" type="Label" parent="Center/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ШЕЛЛИ  •  СУПЕР: РАЗНОС"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="Center/Content"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+
+[node name="Stats" type="Label" parent="Center/Content"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+
+[node name="Back" type="Button" parent="."]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 164.0
+offset_bottom = 80.0
+text = "НАЗАД"
+
+[connection signal="pressed" from="Back" to="." method="_on_back_pressed"]

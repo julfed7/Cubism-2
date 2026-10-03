@@ -38,9 +38,12 @@ properties/4/replication_mode = 2
 properties/5/path = NodePath(".:crystals")
 properties/5/spawn = true
 properties/5/replication_mode = 2
-properties/6/path = NodePath(".:is_hidden")
+properties/6/path = NodePath(".:super_charge")
 properties/6/spawn = true
 properties/6/replication_mode = 2
+properties/7/path = NodePath(".:is_hidden")
+properties/7/spawn = true
+properties/7/replication_mode = 2
 
 [node name="Player" type="CharacterBody2D"]
 collision_layer = 2

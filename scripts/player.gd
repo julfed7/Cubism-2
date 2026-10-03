@@ -12,6 +12,10 @@ const SNAPSHOT_INTERVAL: float = 0.033
 @export var peer_id: String = "1"
 @export var is_local: bool = true
 @export var is_hidden: bool = false
+var brawler_id: String = "shelly"
+var brawler_data: Dictionary = {}
+var super_charge: float = 0.0
+var super_ready: bool = false
 
 @onready var health: Node = $Health
 @onready var inventory: Inventory = $Inventory
@@ -53,6 +57,7 @@ var _last_visual_hidden_state: bool = false
 func _ready() -> void:
 	add_to_group("player")
 	is_local = NetworkManager.is_single or get_multiplayer_authority() == multiplayer.get_unique_id()
+	_apply_brawler_profile()
 	$Camera2D.enabled = is_local
 	health.died.connect(_on_died)
 	health.health_changed.connect(_on_health_changed)
@@ -78,6 +83,42 @@ func _ready() -> void:
 	if is_local and death_panel != null and death_panel.has_signal("respawn_requested"):
 		death_panel.respawn_requested.connect(_respawn)
 
+
+func _apply_brawler_profile() -> void:
+	if not BrawlerDB.has_brawler(brawler_id):
+		brawler_id = BrawlerDB.DEFAULT_ID
+	brawler_data = BrawlerDB.get_brawler(brawler_id)
+	speed = float(brawler_data.get("speed", speed))
+	var profile_health: float = float(brawler_data.get("max_health", 100.0))
+	health.set("max_health", profile_health)
+	health.set("current_health", profile_health)
+	health.set("_dead", false)
+	hp = profile_health
+	max_hp = profile_health
+	$Sprite2D.modulate = brawler_data.get("color", Color.WHITE)
+
+func request_super() -> void:
+	if not super_ready or _dead:
+		return
+	if NetworkManager.is_client:
+		NetworkManager.send_action({"type": "super"})
+	else:
+		activate_super()
+
+func activate_super() -> void:
+	if not super_ready or _dead or (not NetworkManager.is_single and not NetworkManager.is_host):
+		return
+	super_charge = 0.0
+	super_ready = false
+	var game: Node = get_tree().current_scene
+	if game != null and game.has_method("execute_super"):
+		game.execute_super(self)
+
+func register_damage_dealt(amount: float) -> void:
+	if amount <= 0.0 or _dead:
+		return
+	super_charge = clampf(super_charge + amount * 0.75, 0.0, 100.0)
+	super_ready = super_charge >= 100.0
 
 func _physics_process(delta: float) -> void:
 	if _dead:
@@ -117,6 +158,8 @@ func _process(delta: float) -> void:
 		_apply_replicated_inventory()
 		_apply_replicated_health()
 	if is_local:
+		if Input.is_action_just_pressed("super_ability"):
+			request_super()
 		var aim: Vector2 = get_global_mouse_position() - global_position
 		if aim.length_squared() > 0.001:
 			weapon_pivot.rotation = aim.angle()
@@ -376,6 +419,7 @@ func melee_attack() -> void:
 			})
 		else:
 			target.call("take_damage", damage, my_position, knockback_force)
+			register_damage_dealt(damage)
 
 
 func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:

@@ -27,6 +27,14 @@ texture = ExtResource("3")
 expand_mode = 1
 stretch_mode = 6
 
+[node name="Profile" type="Label" parent="."]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 420.0
+offset_bottom = 58.0
+text = "PLAYER  •  0 ТРОФЕЕВ"
+theme_override_font_sizes/font_size = 16
+
 [node name="Center" type="CenterContainer" parent="." unique_id=1651144018]
 layout_mode = 1
 anchors_preset = 15
@@ -61,6 +69,13 @@ script = ExtResource("4_glow")
 pulse_delay = 0.36
 text = "СОЗДАТЬ КОМНАТУ"
 
+[node name="Brawlers" type="Button" parent="Center/Buttons"]
+custom_minimum_size = Vector2(350, 82)
+layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.72
+text = "БОЙЦЫ"
+
 [node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
@@ -83,4 +98,5 @@ text = "Cubism D 1.0.8"
 [connection signal="pressed" from="Center/Buttons/Compaign" to="." method="_on_compaign_pressed"]
 [connection signal="pressed" from="Center/Buttons/JoinRoom" to="." method="_on_join_room_pressed"]
 [connection signal="pressed" from="Center/Buttons/CreateRoom" to="." method="_on_create_room_pressed"]
+[connection signal="pressed" from="Center/Buttons/Brawlers" to="." method="_on_brawlers_pressed"]
 [connection signal="pressed" from="Center/Buttons/Settings" to="." method="_on_settings_pressed"]

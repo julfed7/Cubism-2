@@ -14,6 +14,11 @@ class_name GameHUD
 @onready var detection_panel: Panel = $HUDRoot/DetectionPanel
 @onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
 @onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
+@onready var brawler_panel: Panel = $HUDRoot/BrawlerPanel
+@onready var brawler_label: Label = $HUDRoot/BrawlerPanel/BrawlerLabel
+@onready var super_label: Label = $HUDRoot/BrawlerPanel/SuperLabel
+@onready var super_fill: Panel = $HUDRoot/BrawlerPanel/SuperBackground/SuperFill
+@onready var super_button: Button = $HUDRoot/SuperButton
 @onready var match_panel: Panel = $HUDRoot/MatchPanel
 @onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
 @onready var match_time_label: Label = $HUDRoot/MatchPanel/MatchTime
@@ -43,6 +48,8 @@ func _ready() -> void:
 	crystal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.12, 0.25, 0.94), Color(0.38, 0.82, 1.0, 1.0), 2))
 	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
+	brawler_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.12, 0.08, 0.16, 0.94), Color(0.66, 0.38, 0.92, 1.0), 2))
+	super_button.pressed.connect(_on_super_pressed)
 	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
 	crystal_panel.visible = false
@@ -77,6 +84,7 @@ func _process(_delta: float) -> void:
 		crystal_count_label.text = "%02d" % player.crystals
 	if not is_instance_valid(player):
 		return
+	_brawler_hud_update()
 	_bind_player_if_needed()
 	_update_detection_indicator()
 	var weapon: Dictionary = player.current_weapon
@@ -91,6 +99,15 @@ func _process(_delta: float) -> void:
 	else:
 		ammo_label.text = "Магазин: %d / Запас: %d" % [int(player.magazine.get(weapon_id, 0)), int(player.ammo_reserve.get(weapon_id, 0))]
 
+
+func _brawler_hud_update() -> void:
+	if not is_instance_valid(player):
+		return
+	brawler_label.text = "БОЕЦ: %s" % str(player.brawler_data.get("name", player.brawler_id))
+	super_label.text = "СУПЕР: %d%%" % roundi(player.super_charge)
+	super_fill.offset_right = 176.0 * clampf(player.super_charge / 100.0, 0.0, 1.0)
+	super_button.disabled = not player.super_ready
+	super_button.modulate = Color(1.0, 0.86, 0.42, 1.0) if player.super_ready else Color.WHITE
 
 func update_ammo(ammo: int, reserve: int) -> void:
 	if is_instance_valid(ammo_label):
@@ -221,3 +238,7 @@ func _make_panel_style(background: Color, border: Color, border_width: int) -> S
 func _on_exit_button_pressed() -> void:
 	get_node("/root/NetworkManager").leave_game()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+
+func _on_super_pressed() -> void:
+	if is_instance_valid(player):
+		player.request_super()

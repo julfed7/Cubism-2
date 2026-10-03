@@ -34,6 +34,7 @@ var match_time_left: float = 180.0
 var match_elapsed: float = 0.0
 var match_finished: bool = false
 var match_status: String = "Матч начинается"
+var _progress_saved: bool = false
 var zone_center: Vector2 = Vector2.ZERO
 var zone_radius: float = 1200.0
 var zone_start_radius: float = 1200.0
@@ -118,6 +119,8 @@ func _tick_match_rules(delta: float) -> void:
 						player.take_damage(10.0, zone_center, 0.0)
 		if has_node("MatchOverlay"):
 			$MatchOverlay.configure(zone_center, zone_radius, true)
+	if is_battle_royale_mode() and _remaining_enemies() == 0:
+		_finish_match(true, "Все соперники выбиты")
 	var local_player: GamePlayer = _find_player(multiplayer.get_unique_id())
 	if local_player == null and NetworkManager.is_single:
 		local_player = _find_player(1)
@@ -132,7 +135,17 @@ func _tick_match_rules(delta: float) -> void:
 			receive_match_state.rpc(match_time_left, zone_radius, match_status, match_finished)
 
 
+func _remaining_enemies() -> int:
+	var remaining: int = 0
+	for node: Node in get_tree().get_nodes_in_group("enemy"):
+		if node is GameZombie and not (node as GameZombie).dead:
+			remaining += 1
+	return remaining
+
 func _finish_match(won: bool, reason: String) -> void:
+	if NetworkManager.is_single and not _progress_saved:
+		_progress_saved = true
+		GameState.record_match(won)
 	if match_finished:
 		return
 	match_finished = true
@@ -406,6 +419,9 @@ func _spawn_player(data: Variant) -> Node:
 	var player := PLAYER_SCENE.instantiate() as GamePlayer
 	player.name = "Player_%d" % player_id
 	player.peer_id = str(player_id)
+	var brawler_ids: Array[String] = BrawlerDB.get_ids()
+	var spawn_brawler: String = GameState.selected_brawler if (NetworkManager.is_single or player_id == multiplayer.get_unique_id()) else brawler_ids[posmod(player_id, brawler_ids.size())]
+	player.brawler_id = spawn_brawler
 	player.set_multiplayer_authority(player_id, true)
 	var state_sync: MultiplayerSynchronizer = player.get_node_or_null("StateSynchronizer") as MultiplayerSynchronizer
 	if state_sync != null:
@@ -649,7 +665,42 @@ func perform_melee(attacker_id: int, direction: Vector2, damage: float = 15.0) -
 			continue
 		if target.has_method("take_damage"):
 			target.call("take_damage", damage, attacker.global_position, 400.0)
+			attacker.register_damage_dealt(damage)
 
+
+func execute_super(player: GamePlayer) -> void:
+	if player == null or player._dead or (not NetworkManager.is_single and not NetworkManager.is_host):
+		return
+	var direction: Vector2 = player._get_aim_direction()
+	match player.brawler_id:
+		"shelly":
+			for target: Node in _get_super_targets(player):
+				if target.global_position.distance_to(player.global_position) <= 190.0 and absf(direction.angle_to((target.global_position - player.global_position).normalized())) <= deg_to_rad(70.0):
+					target.call("take_damage", 55.0, player.global_position, 550.0)
+		"colt":
+			var weapon: Dictionary = player.get_current_weapon_data()
+			if weapon.is_empty():
+				weapon = ItemDB.get_item("pistol")
+			weapon["damage"] = float(weapon.get("damage", 20.0)) * 1.6
+			weapon["bullet_speed"] = float(weapon.get("bullet_speed", 700.0)) * 1.25
+			for spread: float in [-8.0, -5.0, -2.5, 0.0, 2.5, 5.0, 8.0]:
+				_spawn_projectile(player.get_multiplayer_authority(), player.get_muzzle_position(direction), direction.rotated(deg_to_rad(spread)), weapon)
+		"spike":
+			player.heal(40.0)
+			for target: Node in _get_super_targets(player):
+				if target.global_position.distance_to(player.global_position) <= 210.0:
+					target.call("take_damage", 38.0, player.global_position, 120.0)
+	UISoundManager.play_ui_sound("hit.wav")
+
+func _get_super_targets(player: GamePlayer) -> Array[Node2D]:
+	var targets: Array[Node2D] = []
+	for node: Node in get_tree().get_nodes_in_group("enemy"):
+		if node is Node2D and node.has_method("take_damage") and not (node is GameZombie and (node as GameZombie).dead):
+			targets.append(node as Node2D)
+	for node: Node in get_tree().get_nodes_in_group("player"):
+		if node != player and node is GamePlayer and (node as GamePlayer).visible and not (node as GamePlayer)._dead:
+			targets.append(node as Node2D)
+	return targets
 
 func _on_player_died(player_id: int) -> void:
 	if not NetworkManager.is_single and not NetworkManager.is_host:
@@ -843,6 +894,10 @@ func request_action(action: Dictionary) -> void:
 
 func handle_network_action(player_id: int, action: Dictionary) -> void:
 	match str(action.get("type", "")):
+		"super":
+			var super_player: GamePlayer = _find_player(player_id)
+			if super_player != null and super_player.visible:
+				super_player.activate_super()
 		"pickup":
 			collect_pickup_authoritative(str(action.get("entity_id", "")), player_id)
 		"open_chest":
@@ -894,6 +949,7 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				return
 			var damage: float = 26.0 if is_crystal_blade else (15.0 if attacker.current_weapon.is_empty() else 10.0)
 			target.call("take_damage", damage, attacker.global_position, 400.0)
+			attacker.register_damage_dealt(damage)
 
 
 @rpc("authority", "call_remote", "reliable")

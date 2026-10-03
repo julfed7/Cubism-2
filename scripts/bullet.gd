@@ -79,7 +79,14 @@ func _resolve_hit(collider: Object) -> void:
 	if collider is GamePlayer and (collider as GamePlayer).get_multiplayer_authority() == owner_id:
 		return
 	if collider != null and collider.has_method("take_damage"):
+		var owner_player: GamePlayer = null
+		for player_node: Node in get_tree().get_nodes_in_group("player"):
+			if player_node is GamePlayer and (player_node as GamePlayer).get_multiplayer_authority() == owner_id:
+				owner_player = player_node as GamePlayer
+				break
 		collider.call("take_damage", local_damage, global_position, 100.0)
+		if owner_player != null:
+			owner_player.register_damage_dealt(local_damage)
 		UISoundManager.play_ui_sound("hit.wav")
 	_spent = true
 	set_deferred("monitoring", false)
