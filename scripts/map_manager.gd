@@ -2,7 +2,8 @@ extends Node
 
 var maps: Array[PackedScene] = [
 	preload("res://scenes/maps/Island.tscn"),
-	preload("res://scenes/maps/City.tscn")
+	preload("res://scenes/maps/City.tscn"),
+	preload("res://scenes/maps/CrystalArena.tscn")
 ]
 
 func get_map_by_index(i: int) -> PackedScene:

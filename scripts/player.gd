@@ -67,6 +67,10 @@ func _ready() -> void:
 	_update_stealth_visual()
 	_on_inventory_changed()
 	var current_game: Node = get_tree().current_scene
+	if current_game == null or not current_game.has_method("is_crystal_capture_mode") or not current_game.is_crystal_capture_mode():
+		if inventory.add_item("pistol"):
+			inventory.add_item("ammo_pistol", 24)
+			select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
 	if current_game != null and current_game.has_method("is_crystal_capture_mode") and current_game.is_crystal_capture_mode():
 		if inventory.add_item("crystal_blade"):
 			select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
@@ -644,18 +648,20 @@ func _on_died() -> void:
 	collision_shape.set_deferred("disabled", true)
 	set_physics_process(false)
 	_drop_inventory_on_death()
+	var current_game: Node = get_tree().current_scene
+	var allow_respawn: bool = current_game == null or not current_game.has_method("can_respawn") or bool(current_game.call("can_respawn", get_multiplayer_authority()))
 	if NetworkManager.is_single or NetworkManager.is_host:
 		player_died.emit(get_multiplayer_authority())
 	if is_local:
 		UISoundManager.play_ui_sound("player_death.wav")
 		var death_panel: Node = get_tree().current_scene.get_node_or_null("UI/DeathPanel")
-		if death_panel != null and death_panel.has_method("show_death"):
+		if allow_respawn and death_panel != null and death_panel.has_method("show_death"):
 			death_panel.show_death(5.0)
-		elif NetworkManager.is_single or NetworkManager.is_host:
+		elif allow_respawn and (NetworkManager.is_single or NetworkManager.is_host):
 			await get_tree().create_timer(5.0).timeout
 			if is_instance_valid(self) and _dead:
 				_respawn()
-	elif NetworkManager.is_host:
+	elif allow_respawn and NetworkManager.is_host:
 		await get_tree().create_timer(5.0).timeout
 		if is_instance_valid(self) and _dead:
 			_respawn()

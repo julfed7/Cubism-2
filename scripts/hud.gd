@@ -14,6 +14,10 @@ class_name GameHUD
 @onready var detection_panel: Panel = $HUDRoot/DetectionPanel
 @onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
 @onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
+@onready var match_panel: Panel = $HUDRoot/MatchPanel
+@onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
+@onready var match_time_label: Label = $HUDRoot/MatchPanel/MatchTime
+@onready var match_zone_label: Label = $HUDRoot/MatchPanel/MatchZone
 
 var slot_panels: Array[Panel] = []
 var slot_icons: Array[TextureRect] = []
@@ -40,6 +44,7 @@ func _ready() -> void:
 	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
 	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
+	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
 	crystal_panel.visible = false
 	for child: Node in slot_container.get_children():
 		if child is Panel:
@@ -60,6 +65,12 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var game: Node = get_tree().current_scene
+	if game != null and game.has_method("get_match_time_text"):
+		match_time_label.text = str(game.call("get_match_time_text"))
+		match_mode_label.text = str(game.call("get_match_status_text"))
+		match_zone_label.text = str(game.call("get_zone_text"))
+		match_zone_label.visible = not match_zone_label.text.is_empty()
+		match_panel.modulate = Color(1.0, 0.55, 0.45) if match_mode_label.text.begins_with("ПОРАЖЕНИЕ") else Color.WHITE
 	var capture_mode: bool = game != null and game.has_method("is_crystal_capture_mode") and game.is_crystal_capture_mode()
 	crystal_panel.visible = capture_mode
 	if capture_mode and is_instance_valid(player):

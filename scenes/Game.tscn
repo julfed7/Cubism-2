@@ -1,15 +1,21 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2_hud"]
 [ext_resource type="AudioStream" path="res://sounds/music/match_music.ogg" id="3_match_music"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DeathPanel.tscn" id="4_death_panel"]
 [ext_resource type="AudioStream" path="res://sounds/music/lobby_music.ogg" id="5_ambient"]
+[ext_resource type="Script" path="res://scripts/match_overlay.gd" id="6_overlay"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1_game")
 
 [node name="MapContainer" type="Node2D" parent="."]
+
+[node name="MatchOverlay" type="Node2D" parent="."]
+z_index = 3
+script = ExtResource("6_overlay")
+
 
 [node name="NavigationRegion2D" type="NavigationRegion2D" parent="MapContainer"]
 

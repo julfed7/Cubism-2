@@ -33,7 +33,7 @@ offset_right = 200.0
 offset_bottom = 88.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 40
-text = "Levels"
+text = "ВЫБЕРИ РЕЖИМ"
 horizontal_alignment = 1
 
 [node name="Center" type="CenterContainer" parent="."]
@@ -52,12 +52,12 @@ theme_override_constants/separation = 64
 [node name="Level1" type="Button" parent="Center/Levels"]
 custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
-text = "1"
+text = "КЛАССИКА\nКомандный бой и возрождение"
 
 [node name="Level2" type="Button" parent="Center/Levels"]
 custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
-text = "2"
+text = "КОРОЛЕВСКАЯ БИТВА\nПоследний выживший"
 
 [node name="CrystalCapture" type="Button" parent="."]
 layout_mode = 0
@@ -68,7 +68,7 @@ offset_top = 560.0
 offset_right = 150.0
 offset_bottom = 630.0
 grow_horizontal = 2
-text = "Захват кристаллов"
+text = "ЗАХВАТ КРИСТАЛЛОВ\nСобери 10 кристаллов"
 
 [node name="Back" type="Button" parent="."]
 layout_mode = 0

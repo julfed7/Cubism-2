@@ -2,6 +2,8 @@ extends Node
 
 var nickname: String = ""
 var current_level: int = 0
+## The last mode selected in the offline mode screen.
+var current_mode: String = "battle_royale"
 var session_id: int = 0
 
 const SETTINGS_PATH := "user://settings.cfg"

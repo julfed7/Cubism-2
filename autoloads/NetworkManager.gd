@@ -620,6 +620,7 @@ func reset_state() -> void:
 	set_mode(Mode.SINGLE)
 	clear_snapshots()
 	my_id = 1
+	GameState.current_mode = "battle_royale"
 	my_match_id = ""
 	room_id = ""
 	room_players = {}

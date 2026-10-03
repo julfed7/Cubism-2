@@ -26,11 +26,43 @@ var sync_timer: float = 0.0
 const SYNC_INTERVAL: float = 0.033
 
 
+const MODE_CLASSIC := "classic"
+const MODE_BATTLE_ROYALE := "battle_royale"
+const MODE_CRYSTAL_CAPTURE := "crystal_capture"
+
+var match_time_left: float = 180.0
+var match_elapsed: float = 0.0
+var match_finished: bool = false
+var match_status: String = "Матч начинается"
+var zone_center: Vector2 = Vector2.ZERO
+var zone_radius: float = 1200.0
+var zone_start_radius: float = 1200.0
+var zone_target_radius: float = 260.0
+var _state_sync_timer: float = 0.0
+var _zone_damage_timer: float = 0.0
+
+func is_battle_royale_mode() -> bool:
+	return NetworkManager.game_mode == MODE_BATTLE_ROYALE
+
+
+func can_respawn(_player_id: int = 1) -> bool:
+	return not is_battle_royale_mode() and not match_finished
+
+
+func _configure_match_rules() -> void:
+	match_time_left = 150.0 if NetworkManager.game_mode == MODE_CLASSIC else (120.0 if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE else 210.0)
+	zone_start_radius = 1200.0
+	zone_radius = zone_start_radius
+	match_status = "Классический бой" if NetworkManager.game_mode == MODE_CLASSIC else ("Захват кристаллов" if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE else "Королевская битва")
+	if has_node("MatchOverlay"):
+		$MatchOverlay.configure(zone_center, zone_radius, is_battle_royale_mode())
+
 func _ready() -> void:
 	NetworkManager.clear_snapshots()
 	_configure_spawners()
 	_start_music()
 	_select_and_load_map()
+	_configure_match_rules()
 	call_deferred("_configure_existing_entity_synchronizers")
 	_setup_navigation.call_deferred()
 	if NetworkManager.is_single:
@@ -59,6 +91,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if not match_finished and (NetworkManager.is_single or NetworkManager.is_host):
+		_tick_match_rules(delta)
 	if NetworkManager.is_host:
 		_update_adaptive_sync_rates()
 		sync_timer += delta
@@ -67,6 +101,67 @@ func _process(delta: float) -> void:
 			_broadcast_snapshot()
 
 
+func _tick_match_rules(delta: float) -> void:
+	match_elapsed += delta
+	match_time_left = maxf(0.0, match_time_left - delta)
+	if is_battle_royale_mode():
+		var shrink_duration: float = 185.0
+		var shrink_ratio: float = clampf((match_elapsed - 20.0) / shrink_duration, 0.0, 1.0)
+		zone_radius = lerpf(zone_start_radius, zone_target_radius, shrink_ratio)
+		_zone_damage_timer += delta
+		if _zone_damage_timer >= 0.25:
+			_zone_damage_timer = 0.0
+			for player_node: Node in get_tree().get_nodes_in_group("player"):
+				if player_node is GamePlayer and (player_node as GamePlayer).visible:
+					var player := player_node as GamePlayer
+					if player.global_position.distance_to(zone_center) > zone_radius:
+						player.take_damage(10.0, zone_center, 0.0)
+		if has_node("MatchOverlay"):
+			$MatchOverlay.configure(zone_center, zone_radius, true)
+	var local_player: GamePlayer = _find_player(multiplayer.get_unique_id())
+	if local_player == null and NetworkManager.is_single:
+		local_player = _find_player(1)
+	if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE and local_player != null and local_player.crystals >= 10:
+		_finish_match(true, "Команда собрала 10 кристаллов")
+	elif match_time_left <= 0.0:
+		_finish_match(true, "Время матча вышло")
+	_state_sync_timer += delta
+	if _state_sync_timer >= 0.2:
+		_state_sync_timer = 0.0
+		if NetworkManager.is_host:
+			receive_match_state.rpc(match_time_left, zone_radius, match_status, match_finished)
+
+
+func _finish_match(won: bool, reason: String) -> void:
+	if match_finished:
+		return
+	match_finished = true
+	match_status = ("ПОБЕДА — " if won else "ПОРАЖЕНИЕ — ") + reason
+
+
+func get_match_time_text() -> String:
+	var total_seconds: int = maxi(0, ceili(match_time_left))
+	return "%02d:%02d" % [total_seconds / 60, total_seconds % 60]
+
+
+func get_match_status_text() -> String:
+	return match_status
+
+
+func get_zone_text() -> String:
+	if not is_battle_royale_mode():
+		return ""
+	return "ЗОНА %dm" % roundi(zone_radius)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func receive_match_state(time_left: float, radius: float, status: String, finished: bool) -> void:
+	match_time_left = time_left
+	zone_radius = radius
+	match_status = status
+	match_finished = finished
+	if has_node("MatchOverlay"):
+		$MatchOverlay.configure(zone_center, zone_radius, is_battle_royale_mode())
 func _broadcast_snapshot() -> void:
 	var tick: int = Time.get_ticks_msec()
 	var players_state: Dictionary = {}
@@ -251,12 +346,16 @@ func is_crystal_capture_mode() -> bool:
 
 func _select_and_load_map() -> void:
 	if NetworkManager.is_single:
-		if GameState.current_level == 3:
-			NetworkManager.game_mode = "crystal_capture"
+		var requested_mode: String = GameState.current_mode
+		if GameState.current_level == 0 and requested_mode.is_empty():
+			requested_mode = NetworkManager.game_mode
+		if requested_mode == MODE_CRYSTAL_CAPTURE or GameState.current_level == 3:
+			requested_mode = MODE_CRYSTAL_CAPTURE
+			NetworkManager.game_mode = requested_mode
 			NetworkManager.map_name = "CrystalArena"
 			NetworkManager.map_path = "res://scenes/maps/CrystalArena.tscn"
 		else:
-			NetworkManager.game_mode = "battle_royale"
+			NetworkManager.game_mode = requested_mode if requested_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE] else MODE_BATTLE_ROYALE
 			NetworkManager.current_map_index = clampi(GameState.current_level - 1, 0, MapManager.maps.size() - 1)
 			NetworkManager.map_name = "Island" if NetworkManager.current_map_index == 0 else "City"
 		NetworkManager.map_path = "res://scenes/maps/%s.tscn" % NetworkManager.map_name
@@ -558,12 +657,16 @@ func _on_player_died(player_id: int) -> void:
 	var player: GamePlayer = _find_player(player_id)
 	if player == null:
 		return
+	if is_battle_royale_mode() and player_id == multiplayer.get_unique_id():
+		_finish_match(false, "Ты выбыл из арены")
 	if not NetworkManager.is_single:
 		on_player_died.rpc(player_id)
 
 
 @rpc("authority", "call_local", "reliable")
 func on_player_died(player_id: int) -> void:
+	if is_battle_royale_mode() and player_id == multiplayer.get_unique_id():
+		_finish_match(false, "Ты выбыл из арены")
 	var player: GamePlayer = _find_player(player_id)
 	if player != null:
 		player.visible = false
