@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cmhbnjyxrcyky" path="res://scripts/menu.gd" id="1"]
 [ext_resource type="Theme" uid="uid://c6m4t76cj6x0f" path="res://scenes/MenuTheme.tres" id="2"]
 [ext_resource type="Texture2D" uid="uid://buqlfjkhh0jtp" path="res://sprites/menu_screen_default1.jpg" id="3"]
+[ext_resource type="Script" path="res://scripts/glow_button.gd" id="4_glow"]
 
 [node name="MainMenu" type="Control" unique_id=1114005335]
 layout_mode = 3
@@ -42,21 +43,29 @@ theme_override_constants/separation = 32
 [node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.0
 text = "Settings"
 
 [node name="JoinRoom" type="Button" parent="Center/Buttons" unique_id=520919266]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.18
 text = "Join Room"
 
 [node name="CreateRoom" type="Button" parent="Center/Buttons" unique_id=305991647]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.36
 text = "Create Room"
 
 [node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.54
 text = "Compaign"
 
 [node name="Version" type="Label" parent="." unique_id=627586796]
