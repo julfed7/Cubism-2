@@ -183,7 +183,9 @@ func clear_snapshots() -> void:
 
 func create_room(p_mode: String = "battle_royale", p_map_name: String = "Island", p_max: int = 20) -> void:
 	_queue_mode = _normalize_mode(p_mode)
-	_queue_map = p_map_name if p_map_name in ["Island", "City"] else "Island"
+	_queue_map = p_map_name if p_map_name in ["Island", "City", "CrystalArena"] else "Island"
+	if _queue_mode == "crystal_capture":
+		_queue_map = "CrystalArena"
 	_queue_max = clampi(p_max, 2, 20)
 	game_mode = _queue_mode
 	map_name = _queue_map
@@ -225,7 +227,9 @@ func _send_create_room() -> void:
 func find_match(p_mode: String = "battle_royale", p_map_name: String = "Island") -> void:
 	print("[Matchmaker] find_match: mode=", p_mode, " map=", p_map_name)
 	_queue_mode = _normalize_mode(p_mode)
-	_queue_map = p_map_name if p_map_name in ["Island", "City"] else "Island"
+	_queue_map = p_map_name if p_map_name in ["Island", "City", "CrystalArena"] else "Island"
+	if _queue_mode == "crystal_capture":
+		_queue_map = "CrystalArena"
 	game_mode = _queue_mode
 	map_name = _queue_map
 	map_path = "res://scenes/maps/%s.tscn" % map_name
@@ -585,7 +589,9 @@ func use_item(slot_index: int) -> void:
 
 func apply_game_config(p_game_mode: String, p_map_name: String, p_started: bool = true) -> void:
 	game_mode = _normalize_mode(p_game_mode)
-	map_name = p_map_name if p_map_name in ["Island", "City"] else "Island"
+	map_name = p_map_name if p_map_name in ["Island", "City", "CrystalArena"] else "Island"
+	if game_mode == "crystal_capture":
+		map_name = "CrystalArena"
 	map_path = "res://scenes/maps/%s.tscn" % map_name
 	current_map_index = 0 if map_name == "Island" else 1
 	game_started = p_started
@@ -618,6 +624,9 @@ func reset_state() -> void:
 	room_id = ""
 	room_players = {}
 	game_started = false
+	game_mode = "battle_royale"
+	map_name = "Island"
+	map_path = "res://scenes/maps/Island.tscn"
 	_pending_action = ""
 	_reconnect_attempted = false
 	_match_emitted = false
@@ -631,6 +640,8 @@ func reset_state() -> void:
 
 func _normalize_mode(value: String) -> String:
 	var normalized: String = value.to_lower().strip_edges()
+	if normalized in ["crystal_capture", "захват кристаллов", "захват кристалла", "кристаллы"]:
+		return "crystal_capture"
 	if normalized in ["classic", "классический", "классика"]:
 		return "classic"
 	return "battle_royale"

@@ -1,14 +1,18 @@
 extends CharacterBody2D
 class_name GamePlayer
 
+// test from codex
+# Локальный игрок обрабатывает ввод и синхронизирует позицию по сети.
 signal player_died(player_id: int)
 
-const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
+const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle", "crystal_blade"]
+const MELEE_WEAPON_IDS: Array[String] = ["crystal_blade"]
 const SNAPSHOT_INTERVAL: float = 0.033
 
 @export var speed: float = 500.0
 @export var peer_id: String = "1"
 @export var is_local: bool = true
+@export var is_hidden: bool = false
 
 @onready var health: Node = $Health
 @onready var inventory: Inventory = $Inventory
@@ -21,6 +25,7 @@ var current_weapon: Dictionary = {}
 var magazine: Dictionary = {}
 var ammo_reserve: Dictionary = {}
 var coins: int = 0
+var crystals: int = 0
 var hp: float = 100.0
 var max_hp: float = 100.0
 var network_weapon_id: String = ""
@@ -42,6 +47,8 @@ var _last_replicated_hp: float = 100.0
 var _last_network_inventory_text: String = ""
 var _last_remote_weapon_id: String = ""
 var _applying_network_inventory: bool = false
+var _stealth_bushes: Array[Node] = []
+var _last_visual_hidden_state: bool = false
 
 
 func _ready() -> void:
@@ -58,7 +65,12 @@ func _ready() -> void:
 		NetworkManager.quantize(global_position.y)
 	)
 	_last_replicated_hp = hp
+	_update_stealth_visual()
 	_on_inventory_changed()
+	var current_game: Node = get_tree().current_scene
+	if current_game != null and current_game.has_method("is_crystal_capture_mode") and current_game.is_crystal_capture_mode():
+		if inventory.add_item("crystal_blade"):
+			select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
 	var death_panel: Node = get_tree().current_scene.get_node_or_null("UI/DeathPanel")
 	if is_local and death_panel != null and death_panel.has_signal("respawn_requested"):
 		death_panel.respawn_requested.connect(_respawn)
@@ -93,6 +105,8 @@ func _get_move_direction() -> Vector2:
 
 
 func _process(delta: float) -> void:
+	if _last_visual_hidden_state != is_hidden:
+		_update_stealth_visual()
 	if NetworkManager.is_client:
 		_apply_replicated_inventory()
 		_apply_replicated_health()
@@ -119,6 +133,35 @@ func _process(delta: float) -> void:
 	var damping: float = 1.0 - pow(0.9, snapshot_step)
 	trajectory_vel = trajectory_vel.lerp(Vector2.ZERO, damping)
 	global_position = global_position.lerp(trajectory_pos, clampf(15.0 * delta, 0.0, 1.0))
+
+
+func enter_stealth_bush(bush: Node) -> void:
+	if _dead or _stealth_bushes.has(bush):
+		return
+	_stealth_bushes.append(bush)
+	_set_hidden_state(true)
+
+
+func exit_stealth_bush(bush: Node) -> void:
+	_stealth_bushes.erase(bush)
+	if _stealth_bushes.is_empty():
+		_set_hidden_state(false)
+
+
+func _set_hidden_state(value: bool) -> void:
+	if is_hidden == value:
+		return
+	is_hidden = value
+	_update_stealth_visual()
+
+
+func _update_stealth_visual() -> void:
+	_last_visual_hidden_state = is_hidden
+	self_modulate = Color(1.0, 1.0, 1.0, 0.48 if is_hidden else 1.0)
+
+
+func is_in_stealth_bush() -> bool:
+	return is_hidden
 
 
 func set_trajectory(pos: Vector2, vel: Vector2) -> void:
@@ -283,8 +326,9 @@ func melee_attack() -> void:
 		return
 	var direction: Vector2 = _get_aim_direction()
 	var my_position: Vector2 = global_position
-	var damage: float = 15.0 if current_weapon.is_empty() else 10.0
-	var attack_range: float = 60.0
+	var is_crystal_blade: bool = str(current_weapon.get("id", "")) == "crystal_blade"
+	var damage: float = 26.0 if is_crystal_blade else (15.0 if current_weapon.is_empty() else 10.0)
+	var attack_range: float = 72.0 if is_crystal_blade else 60.0
 	var knockback_force: float = 400.0
 	_melee_timer = 0.45
 
@@ -589,6 +633,8 @@ func _on_died() -> void:
 	if _dead:
 		return
 	_dead = true
+	_stealth_bushes.clear()
+	_set_hidden_state(false)
 	velocity = Vector2.ZERO
 	knockback_velocity = Vector2.ZERO
 	modulate = Color(0.5, 0.5, 0.5, 0.5)
@@ -623,6 +669,8 @@ func _respawn() -> void:
 
 func restore_respawn_state() -> void:
 	_dead = false
+	_stealth_bushes.clear()
+	_set_hidden_state(false)
 	visible = true
 	collision_shape.set_deferred("disabled", false)
 	set_physics_process(true)

@@ -105,6 +105,11 @@ theme_override_font_sizes/font_size = 30
 text = "КОРОЛЕВСКАЯ БИТВА"
 horizontal_alignment = 1
 
+[node name="CrystalCapture" type="Button" parent="Center/ModeScreen"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+text = "ЗАХВАТ КРИСТАЛЛОВ"
+
 [node name="MapScreen" type="VBoxContainer" parent="Center"]
 visible = false
 custom_minimum_size = Vector2(940, 0)
@@ -194,6 +199,7 @@ horizontal_alignment = 1
 
 [connection signal="pressed" from="Center/ModeScreen/Cards/Classic" to="." method="_on_classic_pressed"]
 [connection signal="pressed" from="Center/ModeScreen/Cards/BattleRoyale" to="." method="_on_battle_royale_pressed"]
+[connection signal="pressed" from="Center/ModeScreen/CrystalCapture" to="." method="_on_crystal_capture_pressed"]
 [connection signal="pressed" from="Center/MapScreen/Cards/Island" to="." method="_on_island_pressed"]
 [connection signal="pressed" from="Center/MapScreen/Cards/City" to="." method="_on_city_pressed"]
 [connection signal="pressed" from="Center/MapScreen/Play" to="." method="_on_play_pressed"]

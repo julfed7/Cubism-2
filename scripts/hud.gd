@@ -9,6 +9,11 @@ class_name GameHUD
 @onready var ammo_label: Label = $HUDRoot/AmmoLabel
 @onready var slot_container: HBoxContainer = $HUDRoot/SlotContainer
 @onready var selected_item_label: Label = $HUDRoot/SelectedItemLabel
+@onready var crystal_panel: Panel = $HUDRoot/CrystalPanel
+@onready var crystal_count_label: Label = $HUDRoot/CrystalPanel/CrystalCount
+@onready var detection_panel: Panel = $HUDRoot/DetectionPanel
+@onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
+@onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
 
 var slot_panels: Array[Panel] = []
 var slot_icons: Array[TextureRect] = []
@@ -17,6 +22,7 @@ var _normal_style: StyleBoxFlat
 var _selected_style: StyleBoxFlat
 var _health_bg_style: StyleBoxFlat
 var _health_fill_style: StyleBoxFlat
+var _detection_fill_style: StyleBoxFlat
 var _bound_inventory: Inventory
 var _bound_health: Node
 var _warned_sprite_ids: Dictionary = {}
@@ -27,8 +33,14 @@ func _ready() -> void:
 	_selected_style = _make_panel_style(Color(0.16, 0.17, 0.19, 0.96), Color(1.0, 0.78, 0.22, 1.0), 3)
 	_health_bg_style = _make_panel_style(Color(0.18, 0.18, 0.18, 1.0), Color(0.08, 0.08, 0.08, 1.0), 1)
 	_health_fill_style = _make_panel_style(Color(0.8, 0.2, 0.2, 1.0), Color(0.8, 0.2, 0.2, 1.0), 0)
+	_detection_fill_style = _make_panel_style(Color("48b85b"), Color("48b85b"), 0)
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
+	crystal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.12, 0.25, 0.94), Color(0.38, 0.82, 1.0, 1.0), 2))
+	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
+	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
+	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
+	crystal_panel.visible = false
 	for child: Node in slot_container.get_children():
 		if child is Panel:
 			var panel: Panel = child as Panel
@@ -47,9 +59,15 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	var game: Node = get_tree().current_scene
+	var capture_mode: bool = game != null and game.has_method("is_crystal_capture_mode") and game.is_crystal_capture_mode()
+	crystal_panel.visible = capture_mode
+	if capture_mode and is_instance_valid(player):
+		crystal_count_label.text = "%02d" % player.crystals
 	if not is_instance_valid(player):
 		return
 	_bind_player_if_needed()
+	_update_detection_indicator()
 	var weapon: Dictionary = player.current_weapon
 	if weapon.is_empty():
 		weapon_label.text = "Оружие: нет"
@@ -57,12 +75,44 @@ func _process(_delta: float) -> void:
 		return
 	var weapon_id: String = str(weapon.get("id", ""))
 	weapon_label.text = str(weapon.get("name", weapon_id))
-	ammo_label.text = "Магазин: %d / Запас: %d" % [int(player.magazine.get(weapon_id, 0)), int(player.ammo_reserve.get(weapon_id, 0))]
+	if weapon_id == "crystal_blade":
+		ammo_label.text = "Атака: ближний бой"
+	else:
+		ammo_label.text = "Магазин: %d / Запас: %d" % [int(player.magazine.get(weapon_id, 0)), int(player.ammo_reserve.get(weapon_id, 0))]
 
 
 func update_ammo(ammo: int, reserve: int) -> void:
 	if is_instance_valid(ammo_label):
 		ammo_label.text = "Магазин: %d / Запас: %d" % [ammo, reserve]
+
+
+func _update_detection_indicator() -> void:
+	if not is_instance_valid(player):
+		return
+	const detection_distance: float = 450.0
+	var nearest_distance: float = INF
+	for node: Node in get_tree().get_nodes_in_group("enemy"):
+		if not node is GameZombie:
+			continue
+		var zombie := node as GameZombie
+		if zombie.dead or zombie.hp <= 0.0:
+			continue
+		nearest_distance = minf(nearest_distance, player.global_position.distance_to(zombie.global_position))
+
+	var ratio: float = 0.0
+	if not player.is_hidden and nearest_distance < detection_distance:
+		ratio = clampf(1.0 - nearest_distance / detection_distance, 0.0, 1.0)
+	detection_fill.offset_right = 176.0 * ratio
+	if player.is_hidden:
+		detection_value.text = "СКРЫТНОСТЬ: В КУСТАХ"
+		_detection_fill_style.bg_color = Color("48b85b")
+	elif nearest_distance == INF:
+		detection_value.text = "ОБНАРУЖЕНИЕ: НЕТ ВРАГОВ"
+		_detection_fill_style.bg_color = Color("48b85b")
+	else:
+		detection_value.text = "ОБНАРУЖЕНИЕ: %d%%" % roundi(ratio * 100.0)
+		_detection_fill_style.bg_color = Color("d14a43") if ratio > 0.65 else Color("e0ad45") if ratio > 0.25 else Color("48b85b")
+	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 
 
 func _bind_player_if_needed() -> void:

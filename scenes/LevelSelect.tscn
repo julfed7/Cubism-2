@@ -59,6 +59,17 @@ custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
 text = "2"
 
+[node name="CrystalCapture" type="Button" parent="."]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -150.0
+offset_top = 560.0
+offset_right = 150.0
+offset_bottom = 630.0
+grow_horizontal = 2
+text = "Захват кристаллов"
+
 [node name="Back" type="Button" parent="."]
 layout_mode = 0
 offset_left = 24.0
@@ -70,5 +81,6 @@ text = "<-"
 [connection signal="pressed" from="Center/Levels/Level1" to="." method="_on_level_1_pressed"]
 
 [connection signal="pressed" from="Center/Levels/Level2" to="." method="_on_level_2_pressed"]
+[connection signal="pressed" from="CrystalCapture" to="." method="_on_crystal_capture_pressed"]
 
 [connection signal="pressed" from="Back" to="." method="_on_back_pressed"]

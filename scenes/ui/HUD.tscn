@@ -42,11 +42,71 @@ grow_vertical = 0
 text = "Выберите предмет"
 horizontal_alignment = 1
 
+[node name="CrystalPanel" type="Panel" parent="HUDRoot"]
+offset_left = 612.0
+offset_top = 18.0
+offset_right = 754.0
+offset_bottom = 72.0
+
+[node name="CrystalTitle" type="Label" parent="HUDRoot/CrystalPanel"]
+offset_left = 12.0
+offset_top = 5.0
+offset_right = 98.0
+offset_bottom = 23.0
+theme_override_colors/font_color = Color(0.62, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "КРИСТАЛЛЫ"
+
+[node name="CrystalCount" type="Label" parent="HUDRoot/CrystalPanel"]
+offset_left = 96.0
+offset_top = 5.0
+offset_right = 132.0
+offset_bottom = 45.0
+theme_override_colors/font_color = Color(0.9, 1, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "00"
+horizontal_alignment = 2
+
 [node name="HealthBackground" type="Panel" parent="HUDRoot"]
 offset_left = 24.0
 offset_top = 24.0
 offset_right = 224.0
 offset_bottom = 44.0
+
+[node name="DetectionPanel" type="Panel" parent="HUDRoot"]
+offset_left = 24.0
+offset_top = 54.0
+offset_right = 224.0
+offset_bottom = 106.0
+
+[node name="DetectionTitle" type="Label" parent="HUDRoot/DetectionPanel"]
+offset_left = 12.0
+offset_top = 4.0
+offset_right = 188.0
+offset_bottom = 20.0
+theme_override_colors/font_color = Color(0.75, 0.9, 0.78, 1)
+theme_override_font_sizes/font_size = 11
+text = "СТАТУС"
+
+[node name="DetectionValue" type="Label" parent="HUDRoot/DetectionPanel"]
+offset_left = 12.0
+offset_top = 4.0
+offset_right = 188.0
+offset_bottom = 20.0
+theme_override_colors/font_color = Color(0.9, 0.95, 0.9, 1)
+theme_override_font_sizes/font_size = 11
+text = "ОБНАРУЖЕНИЕ: 0%"
+horizontal_alignment = 2
+
+[node name="DetectionBackground" type="Panel" parent="HUDRoot/DetectionPanel"]
+offset_left = 12.0
+offset_top = 28.0
+offset_right = 188.0
+offset_bottom = 40.0
+
+[node name="DetectionFill" type="Panel" parent="HUDRoot/DetectionPanel/DetectionBackground"]
+offset_right = 0.0
+offset_bottom = 12.0
 
 [node name="HealthFill" type="Panel" parent="HUDRoot/HealthBackground"]
 offset_right = 200.0

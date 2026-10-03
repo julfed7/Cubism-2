@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/crystal.gd" id="1_crystal"]
+[ext_resource type="Texture2D" path="res://sprites/items/crystal.svg" id="2_crystal"]
+
+[sub_resource type="CircleShape2D" id="CrystalShape"]
+radius = 30.0
+
+[sub_resource type="SceneReplicationConfig" id="CrystalReplication"]
+properties/0/path = NodePath(".:crystal_id")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+properties/1/path = NodePath(".:position")
+properties/1/spawn = true
+properties/1/replication_mode = 0
+
+[node name="Crystal" type="Area2D"]
+collision_layer = 16
+collision_mask = 2
+monitoring = true
+script = ExtResource("1_crystal")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_crystal")
+scale = Vector2(0.72, 0.72)
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CrystalShape")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("CrystalReplication")

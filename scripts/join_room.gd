@@ -22,10 +22,12 @@ func _ready() -> void:
 	mode_option.clear()
 	mode_option.add_item("Классический")
 	mode_option.add_item("Королевская битва")
+	mode_option.add_item("Захват кристаллов")
 	mode_option.select(0)
 	map_option.clear()
 	map_option.add_item("Island")
 	map_option.add_item("City")
+	map_option.add_item("CrystalArena")
 	map_option.select(0)
 	_show_modes()
 
@@ -39,6 +41,12 @@ func _on_classic_pressed() -> void:
 func _on_battle_royale_pressed() -> void:
 	selected_mode = "battle_royale"
 	mode_option.select(1)
+	_show_maps()
+
+
+func _on_crystal_capture_pressed() -> void:
+	selected_mode = "crystal_capture"
+	mode_option.select(2)
 	_show_maps()
 
 
@@ -77,7 +85,7 @@ func _show_maps() -> void:
 	mode_screen.visible = false
 	map_screen.visible = true
 	title_label.text = "ВЫБЕРИ КАРТУ"
-	status_label.text = "Режим: %s" % ("Классика" if selected_mode == "classic" else "Королевская битва")
+	status_label.text = "Режим: %s" % ("Классика" if selected_mode == "classic" else ("Захват кристаллов" if selected_mode == "crystal_capture" else "Королевская битва"))
 
 
 func _on_back_to_modes_pressed() -> void:

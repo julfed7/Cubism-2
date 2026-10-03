@@ -130,7 +130,7 @@ func _find_nearest_alive_player() -> GamePlayer:
 		if not node is GamePlayer:
 			continue
 		var candidate := node as GamePlayer
-		if not candidate.visible or candidate.hp <= 0.0:
+		if not candidate.visible or candidate.is_hidden or candidate.hp <= 0.0:
 			continue
 		var distance: float = global_position.distance_squared_to(candidate.global_position)
 		if distance < nearest_distance:

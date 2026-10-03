@@ -1,0 +1,58 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/crystal_arena.gd" id="1_arena"]
+[ext_resource type="TileSet" path="res://tilemaps/tileset.tres" id="2_tileset"]
+[ext_resource type="PackedScene" path="res://scenes/objects/PlayerSpawn.tscn" id="3_spawn"]
+[ext_resource type="PackedScene" path="res://scenes/objects/Bush.tscn" id="4_bush"]
+
+[sub_resource type="RectangleShape2D" id="HorizontalWall"]
+size = Vector2(1400, 50)
+
+[sub_resource type="RectangleShape2D" id="VerticalWall"]
+size = Vector2(50, 800)
+
+[node name="CrystalArena" type="Node2D"]
+script = ExtResource("1_arena")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="."]
+z_index = -1
+tile_set = ExtResource("2_tileset")
+
+[node name="TopWall" type="StaticBody2D" parent="."]
+position = Vector2(0, -425)
+collision_layer = 1
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TopWall"]
+shape = SubResource("HorizontalWall")
+
+[node name="BottomWall" type="StaticBody2D" parent="."]
+position = Vector2(0, 425)
+collision_layer = 1
+[node name="CollisionShape2D" type="CollisionShape2D" parent="BottomWall"]
+shape = SubResource("HorizontalWall")
+
+[node name="LeftWall" type="StaticBody2D" parent="."]
+position = Vector2(-725, 0)
+collision_layer = 1
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftWall"]
+shape = SubResource("VerticalWall")
+
+[node name="RightWall" type="StaticBody2D" parent="."]
+position = Vector2(725, 0)
+collision_layer = 1
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightWall"]
+shape = SubResource("VerticalWall")
+
+[node name="PlayerSpawn" parent="." instance=ExtResource("3_spawn")]
+position = Vector2(0, 300)
+
+[node name="BushNorthWest" parent="." instance=ExtResource("4_bush")]
+position = Vector2(-360, -190)
+
+[node name="BushNorthEast" parent="." instance=ExtResource("4_bush")]
+position = Vector2(350, -170)
+
+[node name="BushSouthWest" parent="." instance=ExtResource("4_bush")]
+position = Vector2(-420, 260)
+
+[node name="BushSouthEast" parent="." instance=ExtResource("4_bush")]
+position = Vector2(430, 240)

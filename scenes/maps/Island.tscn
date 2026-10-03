@@ -3,6 +3,7 @@
 [ext_resource type="TileSet" uid="uid://cwmc3m48ueddx" path="res://tilemaps/tileset.tres" id="1_4qvcq"]
 [ext_resource type="PackedScene" path="res://scenes/objects/PlayerSpawn.tscn" id="2_spawn"]
 [ext_resource type="PackedScene" uid="uid://cpr72auxao65g" path="res://scenes/objects/Zombie.tscn" id="4_zombie"]
+[ext_resource type="PackedScene" path="res://scenes/objects/Bush.tscn" id="5_bush"]
 
 [node name="Island" type="Node2D" unique_id=1307605302]
 
@@ -12,6 +13,18 @@ tile_map_data = PackedByteArray("AADp/+n/AAAVAA0AAADq/+n/AAAVAA0AAADq/+j/AAAVAA0
 tile_set = ExtResource("1_4qvcq")
 
 [node name="PlayerSpawn" parent="." unique_id=881890703 instance=ExtResource("2_spawn")]
+
+[node name="BushNorthWest" parent="." instance=ExtResource("5_bush")]
+position = Vector2(-360, -190)
+
+[node name="BushNorthEast" parent="." instance=ExtResource("5_bush")]
+position = Vector2(350, -170)
+
+[node name="BushSouthWest" parent="." instance=ExtResource("5_bush")]
+position = Vector2(-420, 260)
+
+[node name="BushSouthEast" parent="." instance=ExtResource("5_bush")]
+position = Vector2(430, 240)
 
 [node name="ChestSpawn1" type="Marker2D" parent="." groups=["chest_spawn"]]
 position = Vector2(200, 0)

@@ -35,6 +35,12 @@ properties/3/replication_mode = 2
 properties/4/path = NodePath(".:ammo_reserve")
 properties/4/spawn = true
 properties/4/replication_mode = 2
+properties/5/path = NodePath(".:crystals")
+properties/5/spawn = true
+properties/5/replication_mode = 2
+properties/6/path = NodePath(".:is_hidden")
+properties/6/spawn = true
+properties/6/replication_mode = 2
 
 [node name="Player" type="CharacterBody2D"]
 collision_layer = 2
