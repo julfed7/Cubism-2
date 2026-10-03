@@ -1,9 +1,13 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [ main ]
+  # Только ручной запуск (через бота или кнопку в GitHub)
   workflow_dispatch:
+    inputs:
+      reason:
+        description: "Причина сборки"
+        required: false
+        default: "Manual build"
 
 permissions:
   contents: write
@@ -22,63 +26,23 @@ jobs:
           use-dotnet: false
           include-templates: true
 
-      - name: Debug - Check export_presets.cfg
-        run: |
-          echo "=== Files in repo root ==="
-          ls -la
-          echo ""
-          echo "=== export_presets.cfg exists? ==="
-          if [ -f export_presets.cfg ]; then
-            echo "YES"
-          else
-            echo "NO export_presets.cfg!"
-            exit 1
-          fi
-
       - name: Restore Keystore
         run: |
-          echo "=== Decoding keystore from secret ==="
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
-          echo "=== Keystore file info ==="
-          ls -la release.keystore
-          file release.keystore
-          echo "=== Size (bytes) ==="
-          wc -c release.keystore
 
-      - name: Configure Keystore in export_presets.cfg
+      - name: Configure Keystore
         run: |
-          echo "=== BEFORE ==="
-          grep "keystore" export_presets.cfg || echo "NO KEYSTORE LINES FOUND"
-          echo ""
-          
-          # Если строк keystore нет — добавляем после package/unique_name
           if ! grep -q "keystore/release=" export_presets.cfg; then
-            echo "Добавляю строки keystore..."
             sed -i '/^package\/unique_name=/a keystore/release=""\nkeystore/release_user=""\nkeystore/release_password=""' export_presets.cfg
           fi
-          
-          # Теперь заменяем значения
           sed -i "s|keystore/release=\".*\"|keystore/release=\"$(pwd)/release.keystore\"|g" export_presets.cfg
           sed -i "s|keystore/release_user=\".*\"|keystore/release_user=\"${{ secrets.ANDROID_KEY_ALIAS }}\"|g" export_presets.cfg
           sed -i "s|keystore/release_password=\".*\"|keystore/release_password=\"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}\"|g" export_presets.cfg
-          
-          echo "=== AFTER ==="
-          grep "keystore" export_presets.cfg || echo "STILL NO KEYSTORE - ошибка!"
-          echo ""
-          
-          # Проверим, что путь к keystore подставился
-          if ! grep -q "release.keystore" export_presets.cfg; then
-            echo "❌ ПУТЬ К KEYSTORE НЕ ПОДСТАВИЛСЯ!"
-            exit 1
-          fi
-          echo "✅ Keystore настроен."
 
       - name: Auto-increment version
         run: |
           VERSION_CODE=$(date -u +%Y%m%d%H%M)
           sed -i "s/^version\/code=.*/version\/code=${VERSION_CODE}/g" export_presets.cfg
-          echo "Version code: ${VERSION_CODE}"
-          grep "version/code" export_presets.cfg
 
       - name: Import Project
         run: godot --headless --import || true
@@ -86,22 +50,9 @@ jobs:
       - name: Build APK
         run: |
           mkdir -p builds
-          godot --headless --export-release "Android" builds/game.apk 2>&1 | tee build_log.txt
-          echo ""
-          echo "=== Build result ==="
-          ls -la builds/ || echo "NO builds folder!"
-          if [ -f builds/game.apk ]; then
-            echo "=== APK exists! ==="
-            ls -la builds/game.apk
-          else
-            echo "=== APK NOT CREATED ==="
-            echo "=== Last 50 lines of build log ==="
-            tail -50 build_log.txt
-            exit 1
-          fi
+          godot --headless --export-release "Android" builds/game.apk
 
       - name: Create Release
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
