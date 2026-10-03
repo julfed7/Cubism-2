@@ -1,7 +1,6 @@
 extends CharacterBody2D
 class_name GamePlayer
 
-// test from codex
 # Локальный игрок обрабатывает ввод и синхронизирует позицию по сети.
 signal player_died(player_id: int)
 
@@ -99,6 +98,9 @@ func _physics_process(delta: float) -> void:
 
 func _get_move_direction() -> Vector2:
 	var direction: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.value.length_squared() > 0.0001:
+		direction = joystick.value
 	if direction.length_squared() > 1.0:
 		direction = direction.normalized()
 	return direction
