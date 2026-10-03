@@ -39,10 +39,10 @@ mouse_filter = 2
 layout_mode = 2
 theme_override_constants/separation = 32
 
-[node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
+[node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
-text = "Compaign"
+text = "Settings"
 
 [node name="JoinRoom" type="Button" parent="Center/Buttons" unique_id=520919266]
 custom_minimum_size = Vector2(350, 100)
@@ -54,10 +54,10 @@ custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
 text = "Create Room"
 
-[node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
+[node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
-text = "Settings"
+text = "Compaign"
 
 [node name="Version" type="Label" parent="." unique_id=627586796]
 layout_mode = 1
