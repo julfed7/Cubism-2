@@ -40,6 +40,13 @@ mouse_filter = 2
 layout_mode = 2
 theme_override_constants/separation = 32
 
+[node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
+custom_minimum_size = Vector2(350, 100)
+layout_mode = 2
+script = ExtResource("4_glow")
+pulse_delay = 0.0
+text = "Compaign"
+
 [node name="JoinRoom" type="Button" parent="Center/Buttons" unique_id=520919266]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
@@ -53,13 +60,6 @@ layout_mode = 2
 script = ExtResource("4_glow")
 pulse_delay = 0.36
 text = "Create Room"
-
-[node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
-custom_minimum_size = Vector2(350, 100)
-layout_mode = 2
-script = ExtResource("4_glow")
-pulse_delay = 0.0
-text = "Compaign"
 
 [node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
 custom_minimum_size = Vector2(350, 100)
