@@ -569,6 +569,16 @@ func _get_aim_direction() -> Vector2:
 func _get_aim_world_position() -> Vector2:
 	if _has_aim_screen_position:
 		return get_viewport().get_canvas_transform().affine_inverse() * _aim_screen_position
+	var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.is_input_active():
+		# On touch devices the fallback mouse position is the joystick finger.
+		# Keep the current aim and remember it, so releasing the joystick cannot
+		# move the aim to the last joystick touch position either.
+		var current_aim_direction := Vector2.RIGHT.rotated(weapon_pivot.rotation)
+		var current_aim_position := global_position + current_aim_direction
+		_aim_screen_position = get_viewport().get_canvas_transform() * current_aim_position
+		_has_aim_screen_position = true
+		return current_aim_position
 	return get_global_mouse_position()
 
 
