@@ -144,6 +144,10 @@ func use_item(index: int) -> void:
 	var item_id: String = str(slot.get("id", ""))
 	var data: Dictionary = ItemDB.get_item(item_id)
 	match str(data.get("type", "")):
+		"throwable":
+			if item_id == "noise_lure" and owner_player.has_method("use_item"):
+				# The player routes client requests; the server consumes on spawn.
+				owner_player.use_item(index)
 		"healing":
 			owner_player.heal(float(data.get("heal", 50.0)))
 			remove_item(item_id, 1)

@@ -15,13 +15,23 @@ const LOOT_TABLE: Array[Dictionary] = [
 	{"id": "medkit", "weight": 25},
 	{"id": "tar_bomb", "weight": 12},
 	{"id": "pulse_beacon", "weight": 12},
+	# A tactical item: it can turn a fight, so keep its chest appearance rare.
+	{"id": "noise_lure", "weight": 3},
 	{"id": "ammo_pistol", "weight": 20},
 	{"id": "ammo_smg", "weight": 15},
 	{"id": "ammo_shotgun", "weight": 10},
 ]
 
 const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
-const CONSUMABLE_IDS: Array[String] = ["medkit", "tar_bomb", "pulse_beacon", "ammo_pistol", "ammo_smg", "ammo_shotgun"]
+const CONSUMABLE_LOOT_TABLE: Array[Dictionary] = [
+	{"id": "medkit", "weight": 25},
+	{"id": "tar_bomb", "weight": 12},
+	{"id": "pulse_beacon", "weight": 12},
+	{"id": "noise_lure", "weight": 3},
+	{"id": "ammo_pistol", "weight": 20},
+	{"id": "ammo_smg", "weight": 15},
+	{"id": "ammo_shotgun", "weight": 10},
+]
 
 
 func _ready() -> void:
@@ -61,7 +71,7 @@ func _spawn_loot() -> void:
 	loot.append(WEAPON_IDS[randi_range(0, WEAPON_IDS.size() - 1)])
 	var consumable_count := randi_range(1, mini(2, count - 1))
 	for _index in consumable_count:
-		loot.append(CONSUMABLE_IDS[randi_range(0, CONSUMABLE_IDS.size() - 1)])
+		loot.append(_pick_random_consumable())
 	while loot.size() < count:
 		loot.append(_pick_random_loot())
 	loot.shuffle()
@@ -74,18 +84,26 @@ func _spawn_loot() -> void:
 
 
 func _pick_random_loot() -> String:
+	return _pick_weighted_item(LOOT_TABLE)
+
+
+func _pick_random_consumable() -> String:
+	return _pick_weighted_item(CONSUMABLE_LOOT_TABLE)
+
+
+func _pick_weighted_item(table: Array[Dictionary]) -> String:
 	var total := 0
-	for item: Dictionary in LOOT_TABLE:
+	for item: Dictionary in table:
 		total += int(item.get("weight", 0))
 	if total <= 0:
-		return LOOT_TABLE[0].id
+		return str(table[0].get("id", "medkit"))
 	var roll := randi() % total
 	var acc := 0
-	for item: Dictionary in LOOT_TABLE:
+	for item: Dictionary in table:
 		acc += int(item.get("weight", 0))
 		if roll < acc:
-			return str(item.get("id", LOOT_TABLE[0].id))
-	return str(LOOT_TABLE[0].id)
+			return str(item.get("id", table[0].get("id", "medkit")))
+	return str(table[0].get("id", "medkit"))
 
 
 func play_open_animation() -> void:

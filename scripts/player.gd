@@ -614,6 +614,10 @@ func use_item(slot_index: int) -> void:
 		var game: Node = get_tree().current_scene
 		if game != null and game.has_method("throw_resin_bomb"):
 			game.throw_resin_bomb(self, _get_aim_direction(), slot_index)
+	elif item_id == "noise_lure":
+		var game: Node = get_tree().current_scene
+		if game != null and game.has_method("throw_noise_lure"):
+			game.throw_noise_lure(self, _get_aim_direction(), slot_index)
 	elif item_id == "pulse_beacon":
 		_use_pulse_beacon(slot_index)
 	elif _is_weapon_id(item_id):

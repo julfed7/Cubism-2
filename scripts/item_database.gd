@@ -4,6 +4,7 @@ var items: Dictionary = {
 	"medkit": {"name": "Medkit", "sprite": "res://sprites/items/medkit.png", "type": "healing", "stackable": true, "max_stack": 5, "heal": 50.0},
 	"tar_bomb": {"name": "Смоляная бомба", "description": "Бросает липкую смолу, замедляющую бойцов и зомби.", "sprite": "res://sprites/items/tar_bomb.svg", "type": "throwable", "stackable": true, "max_stack": 3, "throw_speed": 420.0, "throw_range": 260.0, "puddle_duration": 6.0, "slow_multiplier": 0.55},
 	"pulse_beacon": {"name": "Эхо-маяк", "description": "Выпускает короткий импульс и на время выдаёт спрятавшихся в кустах противников.", "sprite": "res://sprites/items/pulse_beacon.svg", "type": "consumable", "stackable": true, "max_stack": 2, "detection_radius": 280.0, "detection_duration": 4.0},
+	"noise_lure": {"name": "Шумовая приманка", "description": "Одноразовая приманка, которая привлекает зомби громким шумом в указанную точку.", "sprite": "res://sprites/items/noise_lure.svg", "type": "throwable", "stackable": true, "max_stack": 3, "duration": 7.0, "attraction_radius": 360.0},
 	"ammo_pistol": {"name": "Pistol Ammo", "sprite": "res://sprites/items/ammo_pistol.png", "type": "ammo", "ammo_for": "pistol", "stackable": true, "max_stack": 90},
 	"ammo_smg": {"name": "SMG Ammo", "sprite": "res://sprites/items/ammo_smg.png", "type": "ammo", "ammo_for": "smg", "stackable": true, "max_stack": 120},
 	"ammo_shotgun": {"name": "Shotgun Shells", "sprite": "res://sprites/items/ammo_shotgun.png", "type": "ammo", "ammo_for": "shotgun", "stackable": true, "max_stack": 40},

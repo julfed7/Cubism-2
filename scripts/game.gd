@@ -5,6 +5,7 @@ const BULLET_SCENE: PackedScene = preload("res://scenes/objects/Bullet.tscn")
 const PICKUP_SCENE: PackedScene = preload("res://scenes/objects/Pickup.tscn")
 const CHEST_SCENE: PackedScene = preload("res://scenes/objects/Chest.tscn")
 const CRYSTAL_SCENE: PackedScene = preload("res://scenes/objects/Crystal.tscn")
+const NOISE_LURE_SCENE: PackedScene = preload("res://scenes/objects/NoiseLure.tscn")
 const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.tscn")
 
 @export var map_scene: PackedScene = preload("res://scenes/maps/Island.tscn")
@@ -21,6 +22,7 @@ const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.
 
 var _next_pickup_id: int = 1
 var _next_bullet_id: int = 1
+var _next_noise_lure_id: int = 1
 var _crystal_positions: Array[Vector2] = [Vector2(0, 0), Vector2(-275, -125), Vector2(275, -125), Vector2(-275, 125), Vector2(275, 125)]
 var _server_fire_at: Dictionary = {}
 var sync_timer: float = 0.0
@@ -665,6 +667,9 @@ func client_game_ready() -> void:
 				"position": pickup.global_position,
 				"throw_velocity": Vector2.ZERO
 			})
+		elif node is NoiseLure and (node as NoiseLure).is_active():
+			var lure := node as NoiseLure
+			sync_noise_lure.rpc_id(client_id, lure.global_position, lure._remaining, lure.attraction_radius, str(lure.name))
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -1001,6 +1006,66 @@ func sync_chest_opened(chest_id: String) -> void:
 		chest.server_opened()
 
 
+func _throw_landing_position(player: GamePlayer, direction: Vector2, throw_range: float) -> Vector2:
+	var throw_direction: Vector2 = direction.normalized()
+	if throw_direction.length_squared() < 0.01:
+		throw_direction = Vector2.RIGHT
+	var origin: Vector2 = player.global_position
+	var landing: Vector2 = origin + throw_direction * throw_range
+	# Only map walls block throws, not players, zombies or pickups.
+	var ray := PhysicsRayQueryParameters2D.create(origin, landing, 1, [player.get_rid()])
+	ray.hit_from_inside = true
+	var hit: Dictionary = player.get_world_2d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		var impact: Vector2 = hit["position"]
+		landing = origin + throw_direction * maxf(0.0, origin.distance_to(impact) - 12.0)
+	return landing
+
+
+func throw_noise_lure(player: GamePlayer, direction: Vector2, slot_index: int) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if player == null or player._dead or player.hp <= 0.0 or match_finished:
+		return
+	if not direction.is_finite() or not player.global_position.is_finite():
+		return
+	var item: Dictionary = player.inventory.get_slot(slot_index)
+	if str(item.get("id", "")) != "noise_lure" or int(item.get("amount", 0)) <= 0:
+		return
+	var data: Dictionary = ItemDB.get_item("noise_lure")
+	var duration: float = float(data.get("duration", 7.0))
+	var radius: float = float(data.get("attraction_radius", 360.0))
+	var throw_range: float = float(data.get("throw_range", 260.0))
+	if not is_finite(duration) or not is_finite(radius) or not is_finite(throw_range):
+		return
+	if duration <= 0.0 or radius <= 0.0 or throw_range <= 0.0:
+		return
+	var landing: Vector2 = _throw_landing_position(player, direction, throw_range)
+	if not player.inventory.remove_item("noise_lure", 1):
+		return
+	var lure_id: String = "NoiseLure_%d" % _next_noise_lure_id
+	_next_noise_lure_id += 1
+	_spawn_noise_lure(landing, duration, radius, lure_id)
+	if not NetworkManager.is_single:
+		sync_noise_lure.rpc(landing, duration, radius, lure_id)
+
+
+func _spawn_noise_lure(p_position: Vector2, duration: float, radius: float, lure_id: String) -> void:
+	if entities.has_node(NodePath(lure_id)):
+		return
+	var lure: NoiseLure = NOISE_LURE_SCENE.instantiate() as NoiseLure
+	lure.name = lure_id
+	lure.position = entities.to_local(p_position)
+	lure.duration = duration
+	lure.attraction_radius = radius
+	entities.add_child(lure, true)
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_noise_lure(p_position: Vector2, duration: float, radius: float, lure_id: String) -> void:
+	_spawn_noise_lure(p_position, duration, radius, lure_id)
+
+
 func throw_resin_bomb(player: GamePlayer, direction: Vector2, slot_index: int) -> void:
 	if player == null or player._dead or (not NetworkManager.is_single and not NetworkManager.is_host):
 		return
@@ -1008,10 +1073,9 @@ func throw_resin_bomb(player: GamePlayer, direction: Vector2, slot_index: int) -
 	if str(item.get("id", "")) != "tar_bomb":
 		return
 	var item_data: Dictionary = ItemDB.get_item("tar_bomb")
-	var throw_direction: Vector2 = direction.normalized()
-	if throw_direction.length_squared() < 0.01:
-		throw_direction = Vector2.RIGHT
-	var landing: Vector2 = player.global_position + throw_direction * float(item_data.get("throw_range", 260.0))
+	if not direction.is_finite() or not player.global_position.is_finite():
+		return
+	var landing: Vector2 = _throw_landing_position(player, direction, float(item_data.get("throw_range", 260.0)))
 	if not player.inventory.remove_item("tar_bomb", 1):
 		return
 	UISoundManager.play_ui_sound("shoot_shotgun.wav")
@@ -1128,12 +1192,18 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 			if item_player != null:
 				var requested_slot: int = int(action.get("slot", -1))
 				var requested_item: Dictionary = item_player.inventory.get_slot(requested_slot)
-				if str(requested_item.get("id", "")) == "tar_bomb":
+				var requested_id: String = str(requested_item.get("id", ""))
+				if requested_id in ["tar_bomb", "noise_lure"]:
 					var raw_direction: Variant = action.get("direction", [1.0, 0.0])
-					var aim_direction: Vector2 = Vector2.RIGHT
-					if raw_direction is Array and (raw_direction as Array).size() >= 2:
-						aim_direction = Vector2(float(raw_direction[0]), float(raw_direction[1])).normalized()
-					throw_resin_bomb(item_player, aim_direction, requested_slot)
+					if not raw_direction is Array or (raw_direction as Array).size() != 2:
+						return
+					if not (raw_direction[0] is float or raw_direction[0] is int) or not (raw_direction[1] is float or raw_direction[1] is int):
+						return
+					var aim_direction := Vector2(float(raw_direction[0]), float(raw_direction[1]))
+					if requested_id == "noise_lure":
+						throw_noise_lure(item_player, aim_direction, requested_slot)
+					else:
+						throw_resin_bomb(item_player, aim_direction, requested_slot)
 				else:
 					item_player.use_item(requested_slot)
 		"reload":

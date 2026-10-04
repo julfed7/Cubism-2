@@ -31,6 +31,8 @@ var _resin_slows: Dictionary = {}
 var _hurt_flash_timer: float = 0.0
 var _invuln_timer: float = 0.0
 var _last_network_health: float = 30.0
+var _noise_lures: Dictionary = {}
+var _ai_moving: bool = false
 
 
 func _ready() -> void:
@@ -53,6 +55,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_ai_moving = false
 	if dead:
 		return
 	if NetworkManager.is_client:
@@ -109,6 +112,14 @@ func set_trajectory(pos: Vector2, vel: Vector2) -> void:
 
 
 func _process_authoritative_ai() -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	var lure: NoiseLure = _find_noise_lure()
+	if lure != null:
+		# Stop attacking players while distracted, but retain the attack cooldown.
+		is_attacking = false
+		_move_toward_position(lure.global_position, 12.0)
+		return
 	var target: GamePlayer = _find_nearest_alive_player()
 	if target == null:
 		velocity = Vector2.ZERO
@@ -121,18 +132,60 @@ func _process_authoritative_ai() -> void:
 			_attack(target)
 		_update_animation(false)
 		return
-	navigation_agent.target_position = target.global_position
+	_move_toward_position(target.global_position, attack_range * 0.75)
+
+
+func hear_noise_lure(lure: NoiseLure) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if dead or hp <= 0.0 or not is_instance_valid(lure) or not lure.can_attract(global_position):
+		return
+	_noise_lures[lure.get_instance_id()] = weakref(lure)
+
+
+func forget_noise_lure(source_id: int) -> void:
+	_noise_lures.erase(source_id)
+
+
+func _find_noise_lure() -> NoiseLure:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return null
+	var nearest: NoiseLure = null
+	var nearest_distance: float = INF
+	for source_id: int in _noise_lures.keys():
+		var reference: WeakRef = _noise_lures[source_id]
+		var lure: NoiseLure = reference.get_ref() as NoiseLure
+		if not is_instance_valid(lure) or not lure.can_attract(global_position):
+			_noise_lures.erase(source_id)
+			continue
+		var distance: float = global_position.distance_squared_to(lure.global_position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = lure
+	return nearest
+
+
+func _move_toward_position(at: Vector2, stopping_distance: float) -> void:
+	var offset: Vector2 = at - global_position
+	navigation_agent.target_desired_distance = stopping_distance
+	navigation_agent.target_position = at
+	if offset.length() <= stopping_distance:
+		velocity = Vector2.ZERO
+		navigation_agent.velocity = Vector2.ZERO
+		_update_animation(false)
+		return
 	var next_position: Vector2 = navigation_agent.get_next_path_position()
 	var direction: Vector2 = (next_position - global_position).normalized()
 	if direction == Vector2.ZERO:
 		direction = offset.normalized()
 	facing_left = direction.x < 0.0
+	_ai_moving = true
 	navigation_agent.velocity = direction * speed * _resin_speed_multiplier()
 	_update_animation(true)
 
 
 func _on_safe_velocity_computed(safe_velocity: Vector2) -> void:
-	if dead or NetworkManager.is_client or is_attacking:
+	if dead or NetworkManager.is_client or is_attacking or not _ai_moving:
 		return
 	velocity = safe_velocity
 	move_and_slide()
@@ -203,6 +256,7 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	_noise_lures.clear()
 	network_alive = false
 	hp = 0.0
 	network_health = 0.0

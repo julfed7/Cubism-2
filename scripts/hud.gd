@@ -353,6 +353,10 @@ func _update_selected_item_label() -> void:
 		var seconds: int = roundi(float(data.get("puddle_duration", 6.0)))
 		var slow_percent: int = roundi((1.0 - float(data.get("slow_multiplier", 0.55))) * 100.0)
 		selected_item_label.text = "%s  ×%d  • %dс замедления • -%d%% скорости" % [item_name, amount, seconds, slow_percent]
+	elif str(item.get("id", "")) == "noise_lure":
+		var lure_seconds: int = roundi(float(data.get("duration", 7.0)))
+		var lure_radius: int = roundi(float(data.get("attraction_radius", 360.0)))
+		selected_item_label.text = "%s  ×%d  • %dс шума • зовёт зомби (%d)" % [item_name, amount, lure_seconds, lure_radius]
 	else:
 		selected_item_label.text = "%s  ×%d" % [item_name, amount] if amount > 1 else item_name
 
