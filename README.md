@@ -170,7 +170,7 @@ Cubism-2/
 **Вариант 1. Запуск из редактора Godot**
 
 1. Установить [Godot 4.7](https://godotengine.org/download) (подойдёт версия 4.3 и новее)
-2. Скачать репозиторий: **Code → Download ZIP** и распаковать архив, либо выполнить `git clone https://github.com/<username>/Cubism-2.git`
+2. Скачать репозиторий: **Code → Download ZIP** и распаковать архив, либо выполнить `git clone https://github.com/julfed7/Cubism-2.git`
 3. В Godot нажать **Import**, выбрать файл `project.godot` и нажать **Import & Edit**
 4. Нажать **F5**, чтобы запустить игру
 
