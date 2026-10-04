@@ -19,6 +19,7 @@ class_name GameHUD
 @onready var super_label: Label = $HUDRoot/BrawlerPanel/SuperLabel
 @onready var super_fill: Panel = $HUDRoot/BrawlerPanel/SuperBackground/SuperFill
 @onready var super_button: Button = $HUDRoot/SuperButton
+@onready var reload_button: Button = $HUDRoot/ReloadButton
 @onready var match_panel: Panel = $HUDRoot/MatchPanel
 @onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
 @onready var match_time_label: Label = $HUDRoot/MatchPanel/MatchTime
@@ -51,6 +52,13 @@ func _ready() -> void:
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
 	brawler_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.12, 0.08, 0.16, 0.94), Color(0.66, 0.38, 0.92, 1.0), 2))
 	super_button.pressed.connect(_on_super_pressed)
+	reload_button.pressed.connect(_on_reload_pressed)
+	reload_button.add_theme_stylebox_override("normal", _make_panel_style(Color("263d4f"), Color("4f91b8"), 5))
+	reload_button.add_theme_stylebox_override("hover", _make_panel_style(Color("31566e"), Color("70c4ec"), 5))
+	reload_button.add_theme_stylebox_override("pressed", _make_panel_style(Color("1b2d3b"), Color("4f91b8"), 5))
+	reload_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("25282d"), Color("3c4249"), 4))
+	reload_button.add_theme_color_override("font_color", Color("d9f3ff"))
+	reload_button.add_theme_color_override("font_disabled_color", Color("8a9096"))
 	super_button.add_theme_stylebox_override("normal", _make_panel_style(Color("66501a"), Color("30200b"), 5))
 	super_button.add_theme_stylebox_override("hover", _make_panel_style(Color("947326"), Color("30200b"), 5))
 	super_button.add_theme_stylebox_override("pressed", _make_panel_style(Color("42320f"), Color("30200b"), 5))
@@ -99,13 +107,18 @@ func _process(_delta: float) -> void:
 	if weapon.is_empty():
 		weapon_label.text = "Оружие: нет"
 		ammo_label.text = "Магазин: — / Запас: —"
+		reload_button.disabled = true
 		return
 	var weapon_id: String = str(weapon.get("id", ""))
 	weapon_label.text = str(weapon.get("name", weapon_id))
 	if weapon_id == "crystal_blade":
 		ammo_label.text = "Атака: ближний бой"
+		reload_button.disabled = true
 	else:
-		ammo_label.text = "Магазин: %d / Запас: %d" % [int(player.magazine.get(weapon_id, 0)), int(player.ammo_reserve.get(weapon_id, 0))]
+		var loaded: int = int(player.magazine.get(weapon_id, 0))
+		var reserve: int = int(player.ammo_reserve.get(weapon_id, 0))
+		ammo_label.text = "Магазин: %d / Запас: %d" % [loaded, reserve]
+		reload_button.disabled = loaded >= int(weapon.get("magazine_size", 0)) or reserve <= 0
 
 
 func _brawler_hud_update() -> void:
@@ -266,3 +279,8 @@ func _on_exit_button_pressed() -> void:
 func _on_super_pressed() -> void:
 	if is_instance_valid(player):
 		player.request_super()
+
+
+func _on_reload_pressed() -> void:
+	if is_instance_valid(player):
+		player.reload()
