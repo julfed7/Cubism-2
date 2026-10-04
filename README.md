@@ -203,7 +203,7 @@ Cubism-2/
 ### Из редактора
 
 ```bash
-git clone https://github.com/<username>/Cubism-2.git
+git clone https://github.com/julfed7/Cubism-2.git
 ```
 
 1. Открыть Godot и выбрать **Import** → `project.godot`
