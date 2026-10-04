@@ -215,7 +215,14 @@ func _update_selected_item_label() -> void:
 		selected_item_label.text = "Выберите предмет"
 		return
 	var data: Dictionary = ItemDB.get_item(str(item.get("id", "")))
-	selected_item_label.text = str(data.get("name", item.get("id", "")))
+	var item_name: String = str(data.get("name", item.get("id", "")))
+	var amount: int = int(item.get("amount", 1))
+	if str(item.get("id", "")) == "tar_bomb":
+		var seconds: int = roundi(float(data.get("puddle_duration", 6.0)))
+		var slow_percent: int = roundi((1.0 - float(data.get("slow_multiplier", 0.55))) * 100.0)
+		selected_item_label.text = "%s  ×%d  • %dс замедления • -%d%% скорости" % [item_name, amount, seconds, slow_percent]
+	else:
+		selected_item_label.text = "%s  ×%d" % [item_name, amount] if amount > 1 else item_name
 
 
 func _on_health_changed(value: float) -> void:

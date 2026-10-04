@@ -27,6 +27,7 @@ var facing_left: bool = false
 var dead: bool = false
 var _can_attack: bool = true
 var knockback_velocity: Vector2 = Vector2.ZERO
+var _resin_slows: Dictionary = {}
 var _hurt_flash_timer: float = 0.0
 var _invuln_timer: float = 0.0
 var _last_network_health: float = 30.0
@@ -86,6 +87,21 @@ func _process(delta: float) -> void:
 	_update_animation(old_position.distance_squared_to(global_position) > 0.05)
 
 
+func add_resin_slow(source_id: int, multiplier: float) -> void:
+	_resin_slows[source_id] = clampf(multiplier, 0.1, 1.0)
+
+
+func remove_resin_slow(source_id: int) -> void:
+	_resin_slows.erase(source_id)
+
+
+func _resin_speed_multiplier() -> float:
+	var multiplier: float = 1.0
+	for value: Variant in _resin_slows.values():
+		multiplier = minf(multiplier, float(value))
+	return multiplier
+
+
 func set_trajectory(pos: Vector2, vel: Vector2) -> void:
 	trajectory_pos = pos
 	trajectory_vel = vel
@@ -111,7 +127,7 @@ func _process_authoritative_ai() -> void:
 	if direction == Vector2.ZERO:
 		direction = offset.normalized()
 	facing_left = direction.x < 0.0
-	navigation_agent.velocity = direction * speed
+	navigation_agent.velocity = direction * speed * _resin_speed_multiplier()
 	_update_animation(true)
 
 

@@ -16,6 +16,7 @@ var brawler_id: String = "shelly"
 var brawler_data: Dictionary = {}
 var super_charge: float = 0.0
 var super_ready: bool = false
+var _resin_slows: Dictionary = {}
 
 @onready var health: Node = $Health
 @onready var inventory: Inventory = $Inventory
@@ -129,7 +130,7 @@ func _physics_process(delta: float) -> void:
 		_process_hurt(delta)
 		return
 	var direction: Vector2 = _get_move_direction()
-	velocity = direction * speed + knockback_velocity
+	velocity = direction * speed * _resin_speed_multiplier() + knockback_velocity
 	move_and_slide()
 	_process_hurt(delta)
 	network_position_q = Vector2i(
@@ -342,7 +343,8 @@ func _reload_weapon(weapon_id: String) -> int:
 
 func use_item(slot_index: int) -> void:
 	if NetworkManager.is_client:
-		NetworkManager.use_item(slot_index)
+		var aim: Vector2 = _get_aim_direction()
+		NetworkManager.send_action({"type": "use_item", "slot": slot_index, "direction": [aim.x, aim.y]})
 		return
 	var item: Dictionary = inventory.get_slot(slot_index)
 	var item_id: String = str(item.get("id", ""))
@@ -352,8 +354,27 @@ func use_item(slot_index: int) -> void:
 		health.call("heal", 50.0)
 		inventory.remove_item("medkit", 1)
 		UISoundManager.play_ui_sound("heal.wav")
+	elif item_id == "tar_bomb":
+		var game: Node = get_tree().current_scene
+		if game != null and game.has_method("throw_resin_bomb"):
+			game.throw_resin_bomb(self, _get_aim_direction(), slot_index)
 	elif _is_weapon_id(item_id):
 		select_inventory_slot(slot_index)
+
+
+func add_resin_slow(source_id: int, multiplier: float) -> void:
+	_resin_slows[source_id] = clampf(multiplier, 0.1, 1.0)
+
+
+func remove_resin_slow(source_id: int) -> void:
+	_resin_slows.erase(source_id)
+
+
+func _resin_speed_multiplier() -> float:
+	var multiplier: float = 1.0
+	for value: Variant in _resin_slows.values():
+		multiplier = minf(multiplier, float(value))
+	return multiplier
 
 
 func _get_aim_direction() -> Vector2:

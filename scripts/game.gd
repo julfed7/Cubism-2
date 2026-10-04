@@ -5,6 +5,7 @@ const BULLET_SCENE: PackedScene = preload("res://scenes/objects/Bullet.tscn")
 const PICKUP_SCENE: PackedScene = preload("res://scenes/objects/Pickup.tscn")
 const CHEST_SCENE: PackedScene = preload("res://scenes/objects/Chest.tscn")
 const CRYSTAL_SCENE: PackedScene = preload("res://scenes/objects/Crystal.tscn")
+const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.tscn")
 
 @export var map_scene: PackedScene = preload("res://scenes/maps/Island.tscn")
 
@@ -825,6 +826,40 @@ func sync_chest_opened(chest_id: String) -> void:
 		chest.server_opened()
 
 
+func throw_resin_bomb(player: GamePlayer, direction: Vector2, slot_index: int) -> void:
+	if player == null or player._dead or (not NetworkManager.is_single and not NetworkManager.is_host):
+		return
+	var item: Dictionary = player.inventory.get_slot(slot_index)
+	if str(item.get("id", "")) != "tar_bomb":
+		return
+	var item_data: Dictionary = ItemDB.get_item("tar_bomb")
+	var throw_direction: Vector2 = direction.normalized()
+	if throw_direction.length_squared() < 0.01:
+		throw_direction = Vector2.RIGHT
+	var landing: Vector2 = player.global_position + throw_direction * float(item_data.get("throw_range", 260.0))
+	if not player.inventory.remove_item("tar_bomb", 1):
+		return
+	UISoundManager.play_ui_sound("shoot_shotgun.wav")
+	var duration: float = float(item_data.get("puddle_duration", 6.0))
+	var slow: float = float(item_data.get("slow_multiplier", 0.55))
+	_spawn_resin_patch(landing, duration, slow)
+	if not NetworkManager.is_single:
+		sync_resin_patch.rpc(landing, duration, slow)
+
+
+func _spawn_resin_patch(p_position: Vector2, duration: float, slow: float) -> void:
+	var patch: ResinPatch = RESIN_PATCH_SCENE.instantiate() as ResinPatch
+	patch.global_position = p_position
+	patch.duration = duration
+	patch.slow_multiplier = slow
+	entities.add_child(patch, true)
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_resin_patch(p_position: Vector2, duration: float, slow: float) -> void:
+	_spawn_resin_patch(p_position, duration, slow)
+
+
 func spawn_pickup(item_id: String, amount: int, p_position: Vector2, throw_velocity: Vector2 = Vector2.ZERO, p_pickup_id: String = "") -> GamePickup:
 	if NetworkManager.is_client:
 		return null
@@ -908,7 +943,16 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 		"use_item":
 			var item_player: GamePlayer = _find_player(player_id)
 			if item_player != null:
-				item_player.use_item(int(action.get("slot", -1)))
+				var requested_slot: int = int(action.get("slot", -1))
+				var requested_item: Dictionary = item_player.inventory.get_slot(requested_slot)
+				if str(requested_item.get("id", "")) == "tar_bomb":
+					var raw_direction: Variant = action.get("direction", [1.0, 0.0])
+					var aim_direction: Vector2 = Vector2.RIGHT
+					if raw_direction is Array and (raw_direction as Array).size() >= 2:
+						aim_direction = Vector2(float(raw_direction[0]), float(raw_direction[1])).normalized()
+					throw_resin_bomb(item_player, aim_direction, requested_slot)
+				else:
+					item_player.use_item(requested_slot)
 		"reload":
 			var reload_player: GamePlayer = _find_player(player_id)
 			if reload_player != null:
