@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/hud.gd" id="1_hud"]
 [ext_resource type="Script" path="res://scripts/virtual_joystick.gd" id="2_joystick"]
@@ -26,6 +26,56 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
 script = ExtResource("2_joystick")
+
+[node name="PulseMarkers" type="Control" parent="HUDRoot"]
+layout_mode = 0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MarkerTemplate" type="Label" parent="HUDRoot/PulseMarkers"]
+visible = false
+offset_right = 144.0
+offset_bottom = 30.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.4, 0.95, 1, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.05, 0.09, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 14
+text = "! ОБНАРУЖЕН"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PulsePanel" type="Panel" parent="HUDRoot"]
+visible = false
+offset_left = 24.0
+offset_top = 194.0
+offset_right = 224.0
+offset_bottom = 246.0
+mouse_filter = 2
+
+[node name="PulseStatus" type="Label" parent="HUDRoot/PulsePanel"]
+offset_left = 12.0
+offset_top = 5.0
+offset_right = 188.0
+offset_bottom = 27.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.4, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "МАЯК: ЦЕЛЕЙ 0"
+
+[node name="PulseHint" type="Label" parent="HUDRoot/PulsePanel"]
+offset_left = 12.0
+offset_top = 28.0
+offset_right = 188.0
+offset_bottom = 46.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "Метки видны только вам"
 
 [node name="MatchPanel" type="Panel" parent="HUDRoot"]
 offset_left = 493.0

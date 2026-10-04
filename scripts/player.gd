@@ -67,7 +67,8 @@ var _last_network_inventory_text: String = ""
 var _last_remote_weapon_id: String = ""
 var _applying_network_inventory: bool = false
 var _stealth_bushes: Array[Node] = []
-var _last_visual_hidden_state: bool = false
+# Private per-viewer deadlines; never include these in replication.
+var _pulse_detections: Dictionary = {}
 
 
 func _ready() -> void:
@@ -335,8 +336,8 @@ func _get_move_direction() -> Vector2:
 
 
 func _process(delta: float) -> void:
-	if _last_visual_hidden_state != is_hidden:
-		_update_stealth_visual()
+	_expire_pulse_detections()
+	_update_stealth_visual()
 	if NetworkManager.is_client:
 		_apply_replicated_inventory()
 		_apply_replicated_health()
@@ -388,12 +389,85 @@ func _set_hidden_state(value: bool) -> void:
 
 
 func _update_stealth_visual() -> void:
-	_last_visual_hidden_state = is_hidden
-	self_modulate = Color(1.0, 1.0, 1.0, 0.48 if is_hidden else 1.0)
+	var revealed: bool = is_pulse_detected_by(multiplayer.get_unique_id())
+	var concealed: bool = is_hidden and not is_local and not revealed
+	# Root visible is server-replicated and used by combat; keep it unchanged.
+	$Sprite2D.visible = not concealed
+	weapon_pivot.visible = not concealed
+	self_modulate = Color(1.0, 1.0, 1.0, 0.48 if is_hidden and is_local else 1.0)
 
 
 func is_in_stealth_bush() -> bool:
 	return is_hidden
+
+
+func grant_pulse_detection(viewer_id: int, source_id: int, duration: float) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if _dead or hp <= 0.0 or viewer_id <= 0 or not is_finite(duration) or duration <= 0.0:
+		return
+	_store_pulse_detection(viewer_id, source_id, duration)
+	if NetworkManager.is_host and viewer_id != multiplayer.get_unique_id() and multiplayer.get_peers().has(viewer_id):
+		sync_pulse_detection.rpc_id(viewer_id, source_id, duration)
+
+
+func revoke_pulse_detection(viewer_id: int, source_id: int) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	_remove_pulse_detection(viewer_id, source_id)
+	if NetworkManager.is_host and viewer_id != multiplayer.get_unique_id() and multiplayer.get_peers().has(viewer_id):
+		sync_pulse_detection.rpc_id(viewer_id, source_id, 0.0)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func sync_pulse_detection(source_id: int, duration: float) -> void:
+	# Player authority belongs to its owner, so explicitly require the host.
+	if not NetworkManager.is_client or multiplayer.get_remote_sender_id() != 1:
+		return
+	if not is_finite(duration) or duration < 0.0:
+		return
+	var viewer_id: int = multiplayer.get_unique_id()
+	if duration == 0.0:
+		_remove_pulse_detection(viewer_id, source_id)
+	elif not _dead and hp > 0.0:
+		_store_pulse_detection(viewer_id, source_id, duration)
+
+
+func _store_pulse_detection(viewer_id: int, source_id: int, duration: float) -> void:
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	sources[source_id] = Time.get_ticks_msec() + int(ceil(duration * 1000.0))
+	_pulse_detections[viewer_id] = sources
+	_update_stealth_visual()
+
+
+func _remove_pulse_detection(viewer_id: int, source_id: int) -> void:
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	sources.erase(source_id)
+	if sources.is_empty():
+		_pulse_detections.erase(viewer_id)
+	_update_stealth_visual()
+
+
+func is_pulse_detected_by(viewer_id: int) -> bool:
+	if _dead or hp <= 0.0:
+		return false
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	var now: int = Time.get_ticks_msec()
+	for deadline: Variant in sources.values():
+		if int(deadline) > now:
+			return true
+	return false
+
+
+func _expire_pulse_detections() -> void:
+	var now: int = Time.get_ticks_msec()
+	for viewer_id: Variant in _pulse_detections.keys():
+		var sources: Dictionary = _pulse_detections[viewer_id]
+		for source_id: Variant in sources.keys():
+			if int(sources[source_id]) <= now:
+				sources.erase(source_id)
+		if sources.is_empty():
+			_pulse_detections.erase(viewer_id)
 
 
 func set_trajectory(pos: Vector2, vel: Vector2) -> void:
@@ -540,8 +614,40 @@ func use_item(slot_index: int) -> void:
 		var game: Node = get_tree().current_scene
 		if game != null and game.has_method("throw_resin_bomb"):
 			game.throw_resin_bomb(self, _get_aim_direction(), slot_index)
+	elif item_id == "pulse_beacon":
+		_use_pulse_beacon(slot_index)
 	elif _is_weapon_id(item_id):
 		select_inventory_slot(slot_index)
+
+
+func _use_pulse_beacon(slot_index: int) -> void:
+	# Clients request use_item; only the host (or solo game) emits and consumes.
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if _dead or hp <= 0.0:
+		return
+	var item: Dictionary = inventory.get_slot(slot_index)
+	if str(item.get("id", "")) != "pulse_beacon" or int(item.get("amount", 0)) <= 0:
+		return
+	var game: Node = get_tree().current_scene
+	if game == null:
+		return
+	var beacon_scene: PackedScene = load("res://scenes/objects/PulseBeacon.tscn") as PackedScene
+	var beacon: PulseBeacon = beacon_scene.instantiate() as PulseBeacon
+	var data: Dictionary = ItemDB.get_item("pulse_beacon")
+	beacon.detection_radius = float(data.get("detection_radius", 280.0))
+	beacon.detection_duration = float(data.get("detection_duration", 4.0))
+	var container: Node = game.get_node_or_null("MapContainer/Entities")
+	if container == null:
+		container = game
+	container.add_child(beacon, true)
+	# emit_pulse positions itself at the player and sends private detection RPCs.
+	if not beacon.emit_pulse(self):
+		beacon.queue_free()
+		return
+	if not inventory.remove_item("pulse_beacon", 1):
+		beacon.queue_free()
+
 
 
 func add_resin_slow(source_id: int, multiplier: float) -> void:
@@ -921,6 +1027,7 @@ func _on_died() -> void:
 	if _dead:
 		return
 	_dead = true
+	_pulse_detections.clear()
 	_cancel_lumi_dash()
 	super_charge = 0.0
 	super_ready = false
@@ -963,6 +1070,7 @@ func _respawn() -> void:
 func restore_respawn_state() -> void:
 	_cancel_lumi_dash()
 	_dead = false
+	_pulse_detections.clear()
 	super_charge = 0.0
 	super_ready = false
 	_stealth_bushes.clear()

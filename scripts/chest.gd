@@ -14,13 +14,14 @@ const LOOT_TABLE: Array[Dictionary] = [
 	{"id": "rifle", "weight": 5},
 	{"id": "medkit", "weight": 25},
 	{"id": "tar_bomb", "weight": 12},
+	{"id": "pulse_beacon", "weight": 12},
 	{"id": "ammo_pistol", "weight": 20},
 	{"id": "ammo_smg", "weight": 15},
 	{"id": "ammo_shotgun", "weight": 10},
 ]
 
 const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
-const CONSUMABLE_IDS: Array[String] = ["medkit", "tar_bomb", "ammo_pistol", "ammo_smg", "ammo_shotgun"]
+const CONSUMABLE_IDS: Array[String] = ["medkit", "tar_bomb", "pulse_beacon", "ammo_pistol", "ammo_smg", "ammo_shotgun"]
 
 
 func _ready() -> void:
