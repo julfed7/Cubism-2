@@ -12,6 +12,8 @@ class_name ScreenJoystick
 
 signal value_changed(direction: Vector2)
 
+signal aim_position_changed(screen_position: Vector2)
+
 var value: Vector2 = Vector2.ZERO
 var _touch_index: int = -1
 var _mouse_pressed: bool = false
@@ -47,6 +49,8 @@ func _gui_input(event: InputEvent) -> void:
 			_touch_index = touch.index
 			_begin_at_position(local_position)
 			accept_event()
+		elif touch.pressed and not is_position_in_zone(touch.position):
+			_emit_aim_position(touch.position)
 		elif not touch.pressed and touch.index == _touch_index:
 			_touch_index = -1
 			_reset_value()
@@ -56,6 +60,8 @@ func _gui_input(event: InputEvent) -> void:
 		if drag.index == _touch_index:
 			_set_value_from_position(_to_local_position(drag.position))
 			accept_event()
+		else:
+			_emit_aim_position(drag.position)
 	elif event is InputEventMouseButton:
 		var mouse_button := event as InputEventMouseButton
 		if mouse_button.button_index == MOUSE_BUTTON_LEFT:
@@ -64,13 +70,19 @@ func _gui_input(event: InputEvent) -> void:
 				_mouse_pressed = true
 				_begin_at_position(local_position)
 				accept_event()
+			elif mouse_button.pressed:
+				_emit_aim_position(mouse_button.position)
 			elif not mouse_button.pressed and _mouse_pressed:
 				_mouse_pressed = false
 				_reset_value()
 				accept_event()
-	elif event is InputEventMouseMotion and _mouse_pressed:
-		_set_value_from_position(_to_local_position((event as InputEventMouseMotion).position))
-		accept_event()
+	elif event is InputEventMouseMotion:
+		var mouse_motion := event as InputEventMouseMotion
+		if _mouse_pressed:
+			_set_value_from_position(_to_local_position(mouse_motion.position))
+			accept_event()
+		else:
+			_emit_aim_position(mouse_motion.position)
 
 
 func is_input_active() -> bool:
@@ -83,6 +95,11 @@ func is_position_in_zone(p_position: Vector2) -> bool:
 
 func get_touch_index() -> int:
 	return _touch_index
+
+
+func _emit_aim_position(screen_position: Vector2) -> void:
+	# A touch captured by the joystick must never update the player's aim.
+	aim_position_changed.emit(screen_position)
 
 
 func _begin_at_position(p_position: Vector2) -> void:

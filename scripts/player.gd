@@ -52,6 +52,8 @@ var network_position_q: Vector2i = Vector2i.ZERO
 var trajectory_pos: Vector2 = Vector2.ZERO
 var trajectory_vel: Vector2 = Vector2.ZERO
 var has_trajectory: bool = false
+var _aim_screen_position: Vector2 = Vector2.ZERO
+var _has_aim_screen_position: bool = false
 
 var _fire_timer: float = 0.0
 var _melee_timer: float = 0.0
@@ -83,6 +85,10 @@ func _ready() -> void:
 		NetworkManager.quantize(global_position.y)
 	)
 	_last_replicated_hp = hp
+	if is_local:
+		var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+		if joystick != null:
+			joystick.aim_position_changed.connect(_on_aim_position_changed)
 	_update_stealth_visual()
 	_on_inventory_changed()
 	var current_game: Node = get_tree().current_scene
@@ -337,7 +343,7 @@ func _process(delta: float) -> void:
 	if is_local:
 		if Input.is_action_just_pressed("super_ability"):
 			request_super()
-		var aim: Vector2 = get_global_mouse_position() - global_position
+		var aim: Vector2 = _get_aim_world_position() - global_position
 		if aim.length_squared() > 0.001:
 			weapon_pivot.rotation = aim.angle()
 			network_aim_angle = weapon_pivot.rotation
@@ -466,7 +472,7 @@ func shoot() -> void:
 		UISoundManager.play_ui_sound("empty_click.wav")
 		_fire_timer = 0.2
 		return
-	var direction: Vector2 = (get_global_mouse_position() - global_position).normalized()
+	var direction: Vector2 = _get_aim_direction()
 	if direction == Vector2.ZERO:
 		return
 	magazine[weapon_id] = loaded - 1
@@ -554,10 +560,21 @@ func _resin_speed_multiplier() -> float:
 
 
 func _get_aim_direction() -> Vector2:
-	var direction: Vector2 = get_global_mouse_position() - global_position
+	var direction: Vector2 = _get_aim_world_position() - global_position
 	if direction.length_squared() <= 0.001:
 		return Vector2.RIGHT
 	return direction.normalized()
+
+
+func _get_aim_world_position() -> Vector2:
+	if _has_aim_screen_position:
+		return get_viewport().get_canvas_transform().affine_inverse() * _aim_screen_position
+	return get_global_mouse_position()
+
+
+func _on_aim_position_changed(screen_position: Vector2) -> void:
+	_aim_screen_position = screen_position
+	_has_aim_screen_position = true
 
 
 func _current_loaded_ammo() -> int:
