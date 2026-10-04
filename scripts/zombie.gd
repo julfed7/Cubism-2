@@ -237,7 +237,7 @@ func _attack(target: GamePlayer) -> void:
 	is_attacking = true
 	_update_animation(false)
 	if is_instance_valid(target):
-		target.take_damage(attack_damage, global_position, 180.0)
+		target.take_contact_damage(attack_damage, global_position, 180.0)
 	await get_tree().create_timer(attack_cooldown).timeout
 	if is_instance_valid(self) and not dead:
 		_can_attack = true

@@ -545,12 +545,12 @@ func dequantize(value: int) -> float:
 	return float(value) / 100.0
 
 
-func send_move(quantized_x: int, quantized_y: int) -> void:
+func send_move(quantized_x: int, quantized_y: int, dash_revision: int = 0) -> void:
 	if not is_client:
 		return
 	var game: Node = get_tree().current_scene
 	if game != null:
-		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y))
+		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y), dash_revision)
 
 
 func send_shoot(direction: Vector2) -> void:

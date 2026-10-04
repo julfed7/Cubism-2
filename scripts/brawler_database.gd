@@ -35,6 +35,16 @@ var brawlers: Dictionary = {
 		"super_name": "СУПЕР: САД",
 		"super_description": "Восстановление здоровья и урон по области.",
 	},
+	"lumi": {
+		"name": "ЛУМИ",
+		"role": "Мобильный страж",
+		"description": "Подвижный страж, который накапливает заряд атаками и прорывается сквозь врагов.",
+		"color": Color("6edff2"),
+		"max_health": 105.0,
+		"speed": 560.0,
+		"super_name": "СУПЕР: КРИСТАЛЛЬНЫЙ РЫВОК",
+		"super_description": "Короткий рывок сквозь противников с уроном при столкновении.",
+	},
 }
 
 func get_brawler(brawler_id: String) -> Dictionary:

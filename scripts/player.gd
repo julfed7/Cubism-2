@@ -7,6 +7,19 @@ signal player_died(player_id: int)
 const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle", "crystal_blade"]
 const MELEE_WEAPON_IDS: Array[String] = ["crystal_blade"]
 const SNAPSHOT_INTERVAL: float = 0.033
+const LUMI_DASH_DISTANCE: float = 320.0
+const LUMI_DASH_SPEED: float = 1400.0
+const LUMI_DASH_DAMAGE: float = 45.0
+const LUMI_DASH_KNOCKBACK: float = 500.0
+const COMBAT_BODY_MASK: int = 2 | 4
+
+var lumi_dash_active: bool = false
+# Revision also tags movement packets so pre-dash positions cannot undo the result.
+var lumi_dash_revision: int = 0
+var _dash_direction: Vector2 = Vector2.RIGHT
+var _dash_remaining: float = 0.0
+var _dash_collision_mask: int = 0
+var _dash_hit_ids: Dictionary = {}
 
 @export var speed: float = 500.0
 @export var peer_id: String = "1"
@@ -96,27 +109,185 @@ func _apply_brawler_profile() -> void:
 	health.set("_dead", false)
 	hp = profile_health
 	max_hp = profile_health
+	super_charge = 0.0
+	super_ready = false
 	$Sprite2D.modulate = brawler_data.get("color", Color.WHITE)
 
 func request_super() -> void:
-	if not super_ready or _dead:
+	if not is_local or brawler_id != "lumi" or not super_ready or _dead or lumi_dash_active:
 		return
+	var direction: Vector2 = _get_aim_direction()
 	if NetworkManager.is_client:
-		NetworkManager.send_action({"type": "super"})
+		NetworkManager.send_action({"type": "super", "direction": [direction.x, direction.y]})
 	else:
-		activate_super()
+		activate_super(direction)
 
-func activate_super() -> void:
-	if not super_ready or _dead or (not NetworkManager.is_single and not NetworkManager.is_host):
+
+func activate_super(direction: Vector2 = Vector2.ZERO) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if brawler_id != "lumi" or _dead or hp <= 0.0 or not visible or lumi_dash_active:
+		return
+	if not super_ready or not is_finite(super_charge) or super_charge < 100.0:
+		return
+	if direction == Vector2.ZERO and is_local:
+		direction = _get_aim_direction()
+	var magnitude: float = direction.length_squared()
+	if not direction.is_finite() or not is_finite(magnitude) or magnitude < 0.001:
 		return
 	super_charge = 0.0
 	super_ready = false
-	var game: Node = get_tree().current_scene
-	if game != null and game.has_method("execute_super"):
-		game.execute_super(self)
+	_dash_direction = direction.normalized()
+	_dash_remaining = LUMI_DASH_DISTANCE
+	_dash_hit_ids.clear()
+	_dash_collision_mask = collision_mask
+	collision_mask &= ~COMBAT_BODY_MASK
+	lumi_dash_active = true
+	lumi_dash_revision += 1
+	knockback_velocity = Vector2.ZERO
+	_publish_lumi_dash_state()
+
+
+func _process_lumi_dash(delta: float) -> void:
+	# Only the server/single-player instance moves and finds victims.
+	var start: Vector2 = global_position
+	var distance: float = minf(LUMI_DASH_SPEED * delta, _dash_remaining)
+	velocity = _dash_direction * LUMI_DASH_SPEED
+	var wall: KinematicCollision2D = move_and_collide(_dash_direction * distance)
+	_dash_remaining = maxf(0.0, _dash_remaining - distance)
+	_hit_lumi_dash_targets(start, global_position)
+	network_position_q = Vector2i(NetworkManager.quantize(global_position.x), NetworkManager.quantize(global_position.y))
+	if wall != null or _dash_remaining <= 0.001:
+		_finish_lumi_dash()
+
+
+func _hit_lumi_dash_targets(start: Vector2, finish: Vector2) -> void:
+	# Sweep the player's rectangle over the entire travelled segment, including
+	# its starting overlap. This also catches victims crossed in a slow frame.
+	var bounds: Rect2 = collision_shape.shape.get_rect()
+	var points: PackedVector2Array = PackedVector2Array()
+	var corners: Array[Vector2] = [
+		bounds.position, Vector2(bounds.end.x, bounds.position.y),
+		bounds.end, Vector2(bounds.position.x, bounds.end.y),
+	]
+	for corner: Vector2 in corners:
+		var world_corner: Vector2 = collision_shape.global_transform * corner
+		points.append(world_corner)
+		points.append(world_corner + start - finish)
+	var hull: PackedVector2Array = Geometry2D.convex_hull(points)
+	# convex_hull returns a closed contour; the shape needs unique vertices.
+	hull.resize(hull.size() - 1)
+	var sweep: ConvexPolygonShape2D = ConvexPolygonShape2D.new()
+	sweep.points = hull
+	var query: PhysicsShapeQueryParameters2D = PhysicsShapeQueryParameters2D.new()
+	query.shape = sweep
+	query.collision_mask = COMBAT_BODY_MASK
+	query.exclude = [get_rid()]
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var limit: int = get_tree().get_nodes_in_group("enemy").size()
+	limit += get_tree().get_nodes_in_group("player").size() + 1
+	for hit: Dictionary in space.intersect_shape(query, limit):
+		var target: Node2D = hit.get("collider") as Node2D
+		if target == null or target == self or _dash_hit_ids.has(target.get_instance_id()):
+			continue
+		if target is GamePlayer:
+			if (target as GamePlayer)._dead or not target.visible or (target as GamePlayer).hp <= 0.0:
+				continue
+		elif target is GameZombie:
+			if (target as GameZombie).dead or (target as GameZombie).hp <= 0.0:
+				continue
+		else:
+			continue
+		var closest: Vector2 = Geometry2D.get_closest_point_to_segment(target.global_position, start, finish)
+		var sight: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(closest, target.global_position, 1)
+		if not space.intersect_ray(sight).is_empty():
+			continue
+		_dash_hit_ids[target.get_instance_id()] = true
+		# A source behind the victim gives deterministic forward knockback,
+		# including when both centres overlap. Super hits do not recharge it.
+		var source: Vector2 = target.global_position - _dash_direction * 32.0
+		if source == Vector2.ZERO:
+			source -= _dash_direction
+		if target is GamePlayer:
+			(target as GamePlayer).take_contact_damage(LUMI_DASH_DAMAGE, source, LUMI_DASH_KNOCKBACK)
+		else:
+			target.call("take_damage", LUMI_DASH_DAMAGE, source, LUMI_DASH_KNOCKBACK)
+
+
+func _finish_lumi_dash() -> void:
+	if not lumi_dash_active:
+		return
+	lumi_dash_active = false
+	collision_mask = _dash_collision_mask
+	_dash_remaining = 0.0
+	_dash_hit_ids.clear()
+	velocity = Vector2.ZERO
+	lumi_dash_revision += 1
+	_publish_lumi_dash_state()
+
+
+func _cancel_lumi_dash() -> void:
+	if NetworkManager.is_client:
+		if lumi_dash_active:
+			collision_mask = _dash_collision_mask
+		lumi_dash_active = false
+		_dash_hit_ids.clear()
+		_dash_remaining = 0.0
+	else:
+		_finish_lumi_dash()
+
+
+func _publish_lumi_dash_state() -> void:
+	if NetworkManager.is_host:
+		sync_lumi_dash.rpc(lumi_dash_revision, lumi_dash_active, global_position)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func sync_lumi_dash(revision: int, active: bool, server_position: Vector2) -> void:
+	# Player authority belongs to its owner, so explicitly require the server.
+	if not NetworkManager.is_client or multiplayer.get_remote_sender_id() != 1:
+		return
+	if revision > lumi_dash_revision:
+		apply_lumi_dash_snapshot(revision, active, server_position)
+
+
+func apply_lumi_dash_snapshot(revision: int, active: bool, server_position: Vector2) -> bool:
+	if not NetworkManager.is_client:
+		return false
+	if revision < lumi_dash_revision:
+		return true # Ignore positions from snapshots preceding the reliable result.
+	var changed: bool = revision > lumi_dash_revision
+	if changed:
+		if active and not lumi_dash_active:
+			_dash_collision_mask = collision_mask
+			collision_mask &= ~COMBAT_BODY_MASK
+		elif not active and lumi_dash_active:
+			collision_mask = _dash_collision_mask
+		lumi_dash_revision = revision
+		lumi_dash_active = active
+		if active:
+			super_charge = 0.0
+			super_ready = false
+	if active or changed:
+		global_position = server_position
+		set_trajectory(server_position, Vector2.ZERO)
+		velocity = Vector2.ZERO
+		return true
+	return false
+
+
+func accepts_client_movement(revision: int) -> bool:
+	return not _dead and not lumi_dash_active and revision == lumi_dash_revision
+
+
+func take_contact_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> bool:
+	if lumi_dash_active:
+		return false
+	return take_damage(amount, source_pos, knockback_force)
+
 
 func register_damage_dealt(amount: float) -> void:
-	if amount <= 0.0 or _dead:
+	if NetworkManager.is_client or not is_finite(amount) or amount <= 0.0 or _dead or brawler_id != "lumi":
 		return
 	super_charge = clampf(super_charge + amount * 0.75, 0.0, 100.0)
 	super_ready = super_charge >= 100.0
@@ -126,6 +297,11 @@ func _physics_process(delta: float) -> void:
 		return
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_melee_timer = maxf(0.0, _melee_timer - delta)
+	if lumi_dash_active:
+		if not NetworkManager.is_client:
+			_process_lumi_dash(delta)
+		_process_hurt(delta)
+		return
 	if not is_local:
 		_process_hurt(delta)
 		return
@@ -138,7 +314,7 @@ func _physics_process(delta: float) -> void:
 		NetworkManager.quantize(global_position.y)
 	)
 	if NetworkManager.is_client:
-		NetworkManager.send_move(network_position_q.x, network_position_q.y)
+		NetworkManager.send_move(network_position_q.x, network_position_q.y, lumi_dash_revision)
 	_update_footsteps(direction, delta)
 
 
@@ -439,13 +615,26 @@ func melee_attack() -> void:
 				"source_pos": [my_position.x, my_position.y],
 			})
 		else:
-			target.call("take_damage", damage, my_position, knockback_force)
-			register_damage_dealt(damage)
+			var health_before: float = _combat_target_health(target)
+			if target is GamePlayer:
+				(target as GamePlayer).take_contact_damage(damage, my_position, knockback_force)
+			else:
+				target.call("take_damage", damage, my_position, knockback_force)
+			register_damage_dealt(maxf(0.0, health_before - _combat_target_health(target)))
 
 
-func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:
+func _combat_target_health(target: Object) -> float:
+	if target is GamePlayer:
+		return (target as GamePlayer).hp
+	if target is GameZombie:
+		return (target as GameZombie).hp
+	return -1.0
+
+
+func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> bool:
 	if NetworkManager.is_client or _dead or hp <= 0.0 or _invuln_timer > 0.0 or amount <= 0.0:
-		return
+		return false
+	var previous_hp: float = hp
 	_invuln_timer = 0.1
 	_hurt_flash_timer = 0.15
 	if knockback_force > 0.0 and source_pos != Vector2.ZERO:
@@ -458,6 +647,7 @@ func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_fo
 		UISoundManager.play_ui_sound("player_hurt.wav")
 	if hp <= 0.0:
 		_on_death(source_pos)
+	return hp < previous_hp
 
 
 func _process_hurt(delta: float) -> void:
@@ -704,6 +894,9 @@ func _on_died() -> void:
 	if _dead:
 		return
 	_dead = true
+	_cancel_lumi_dash()
+	super_charge = 0.0
+	super_ready = false
 	_stealth_bushes.clear()
 	_set_hidden_state(false)
 	velocity = Vector2.ZERO
@@ -741,7 +934,10 @@ func _respawn() -> void:
 
 
 func restore_respawn_state() -> void:
+	_cancel_lumi_dash()
 	_dead = false
+	super_charge = 0.0
+	super_ready = false
 	_stealth_bushes.clear()
 	_set_hidden_state(false)
 	visible = true

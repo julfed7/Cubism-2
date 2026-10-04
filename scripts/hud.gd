@@ -43,6 +43,7 @@ func _ready() -> void:
 	_health_bg_style = _make_panel_style(Color(0.18, 0.18, 0.18, 1.0), Color(0.08, 0.08, 0.08, 1.0), 1)
 	_health_fill_style = _make_panel_style(Color(0.8, 0.2, 0.2, 1.0), Color(0.8, 0.2, 0.2, 1.0), 0)
 	_detection_fill_style = _make_panel_style(Color("48b85b"), Color("48b85b"), 0)
+	var super_fill_style: StyleBoxFlat = _make_panel_style(Color("e7b83e"), Color("ffe37a"), 0)
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
 	crystal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.12, 0.25, 0.94), Color(0.38, 0.82, 1.0, 1.0), 2))
@@ -50,6 +51,13 @@ func _ready() -> void:
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
 	brawler_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.12, 0.08, 0.16, 0.94), Color(0.66, 0.38, 0.92, 1.0), 2))
 	super_button.pressed.connect(_on_super_pressed)
+	super_button.add_theme_stylebox_override("normal", _make_panel_style(Color("66501a"), Color("30200b"), 5))
+	super_button.add_theme_stylebox_override("hover", _make_panel_style(Color("947326"), Color("30200b"), 5))
+	super_button.add_theme_stylebox_override("pressed", _make_panel_style(Color("42320f"), Color("30200b"), 5))
+	super_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("35343a"), Color("17171b"), 4))
+	super_button.add_theme_color_override("font_color", Color("fff3b0"))
+	super_button.add_theme_color_override("font_disabled_color", Color("a8a5a0"))
+	super_fill.add_theme_stylebox_override("panel", super_fill_style)
 	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
 	crystal_panel.visible = false
@@ -104,10 +112,19 @@ func _brawler_hud_update() -> void:
 	if not is_instance_valid(player):
 		return
 	brawler_label.text = "БОЕЦ: %s" % str(player.brawler_data.get("name", player.brawler_id))
-	super_label.text = "СУПЕР: %d%%" % roundi(player.super_charge)
-	super_fill.offset_right = 176.0 * clampf(player.super_charge / 100.0, 0.0, 1.0)
-	super_button.disabled = not player.super_ready
-	super_button.modulate = Color(1.0, 0.86, 0.42, 1.0) if player.super_ready else Color.WHITE
+	var has_lumi_super: bool = player.brawler_id == "lumi"
+	super_label.visible = has_lumi_super
+	(super_fill.get_parent() as Control).visible = has_lumi_super
+	super_button.visible = has_lumi_super
+	if not has_lumi_super:
+		return
+	var charge: float = clampf(player.super_charge / 100.0, 0.0, 1.0)
+	var ready: bool = player.super_ready and charge >= 1.0 and not player.lumi_dash_active
+	super_label.text = "КРИСТАЛЬНЫЙ РЫВОК  %d%%" % roundi(charge * 100.0)
+	super_fill.offset_right = 176.0 * charge
+	super_button.disabled = not ready
+	super_button.text = "⚡\nРЫВОК ГОТОВ" if ready else "⚡\nРЫВОК"
+	super_button.modulate = Color.WHITE
 
 func update_ammo(ammo: int, reserve: int) -> void:
 	if is_instance_valid(ammo_label):
