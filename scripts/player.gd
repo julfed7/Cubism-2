@@ -21,7 +21,7 @@ var _dash_remaining: float = 0.0
 var _dash_collision_mask: int = 0
 var _dash_hit_ids: Dictionary = {}
 
-@export var speed: float = 500.0
+@export var speed: float = 200.0
 @export var peer_id: String = "1"
 @export var is_local: bool = true
 @export var is_hidden: bool = false
