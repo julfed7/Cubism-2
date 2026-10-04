@@ -3,6 +3,9 @@ extends Node
 ## Небольшой локальный каталог бойцов. Все значения хранятся в данных, поэтому
 ## новые бойцы добавляются без переписывания логики матча.
 const DEFAULT_ID: String = "shelly"
+const TILE_SIZE_PX: float = 50.0
+const PLAYER_SPEED_TILES_PER_SECOND: float = 4.0
+const PLAYER_SPEED_PX_PER_SECOND: float = TILE_SIZE_PX * PLAYER_SPEED_TILES_PER_SECOND
 
 var brawlers: Dictionary = {
 	"shelly": {
@@ -11,7 +14,7 @@ var brawlers: Dictionary = {
 		"description": "Дробовик и супер-выстрел, который отбрасывает врагов.",
 		"color": Color("d95768"),
 		"max_health": 115.0,
-		"speed": 200.0,
+		"speed": PLAYER_SPEED_PX_PER_SECOND,
 		"super_name": "СУПЕР: РАЗНОС",
 		"super_description": "Широкая волна урона и отбрасывание.",
 	},
@@ -21,7 +24,7 @@ var brawlers: Dictionary = {
 		"description": "Быстрый стрелок. Супер выпускает серию усиленных пуль.",
 		"color": Color("4d8fe8"),
 		"max_health": 95.0,
-		"speed": 200.0,
+		"speed": PLAYER_SPEED_PX_PER_SECOND,
 		"super_name": "СУПЕР: ШКВАЛ",
 		"super_description": "Серия из семи усиленных пуль вперёд.",
 	},
@@ -31,7 +34,7 @@ var brawlers: Dictionary = {
 		"description": "Кристальная энергия лечит союзника и задевает врагов вокруг.",
 		"color": Color("75c85a"),
 		"max_health": 100.0,
-		"speed": 200.0,
+		"speed": PLAYER_SPEED_PX_PER_SECOND,
 		"super_name": "СУПЕР: САД",
 		"super_description": "Восстановление здоровья и урон по области.",
 	},
@@ -41,7 +44,7 @@ var brawlers: Dictionary = {
 		"description": "Подвижный страж, который накапливает заряд атаками и прорывается сквозь врагов.",
 		"color": Color("6edff2"),
 		"max_health": 105.0,
-		"speed": 200.0,
+		"speed": PLAYER_SPEED_PX_PER_SECOND,
 		"super_name": "СУПЕР: КРИСТАЛЛЬНЫЙ РЫВОК",
 		"super_description": "Короткий рывок сквозь противников с уроном при столкновении.",
 	},
