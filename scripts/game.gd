@@ -31,6 +31,12 @@ const MODE_CLASSIC := "classic"
 const MODE_BATTLE_ROYALE := "battle_royale"
 const MODE_CRYSTAL_CAPTURE := "crystal_capture"
 
+# One shared cadence keeps the portal window readable in both supported modes.
+# A short warning period prevents an immediate route change at match start.
+const PORTAL_INITIAL_DELAY: float = 12.0
+const PORTAL_OPEN_DURATION: float = 7.0
+const PORTAL_COOLDOWN_DURATION: float = 15.0
+
 var match_time_left: float = 180.0
 var match_elapsed: float = 0.0
 var match_finished: bool = false
@@ -42,6 +48,121 @@ var zone_start_radius: float = 1200.0
 var zone_target_radius: float = 260.0
 var _state_sync_timer: float = 0.0
 var _zone_damage_timer: float = 0.0
+var _portal_pairs: Dictionary = {}
+var _pending_portal_transfers: Dictionary = {}
+var _portal_effect_revisions: Dictionary = {}
+
+
+func _portals_allowed() -> bool:
+	return NetworkManager.game_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE] and not is_crystal_capture_mode()
+
+
+func _configure_portals() -> void:
+	_portal_pairs.clear()
+	# The match advances pairs after player movement; clients only consume state.
+	process_physics_priority = 10
+	for node: Node in map_root.find_children("*", "", true, false):
+		if not node is PortalPair:
+			continue
+		var pair: PortalPair = node as PortalPair
+		pair.set_physics_process(false)
+		if not _portals_allowed():
+			pair.is_open = false
+			pair.hide()
+			pair.process_mode = Node.PROCESS_MODE_DISABLED
+			continue
+		pair.initial_delay = PORTAL_INITIAL_DELAY
+		pair.open_duration = PORTAL_OPEN_DURATION
+		pair.closed_duration = PORTAL_COOLDOWN_DURATION
+		# Restart the phase so every map gets the same opening warning and cadence.
+		pair._elapsed = 0.0
+		pair._remaining = PORTAL_INITIAL_DELAY
+		pair._set_open(false)
+		var pair_id: String = str(map_root.get_path_to(pair))
+		_portal_pairs[pair_id] = pair
+		pair.open_state_changed.connect(_on_portal_open_changed.bind(pair_id))
+		pair.player_teleported.connect(_on_portal_player_teleported.bind(pair_id))
+
+
+func _physics_process(delta: float) -> void:
+	if match_finished or not _portals_allowed():
+		return
+	if NetworkManager.is_single or NetworkManager.is_host:
+		for pair: PortalPair in _portal_pairs.values():
+			pair._physics_process(delta)
+
+
+func _portal_states() -> Dictionary:
+	var states: Dictionary = {}
+	for pair_id: String in _portal_pairs:
+		states[pair_id] = (_portal_pairs[pair_id] as PortalPair).get_open_state()
+	return states
+
+
+func _on_portal_open_changed(_open: bool, _pair_id: String) -> void:
+	if NetworkManager.is_host:
+		sync_portal_states.rpc(_portal_states())
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_portal_states(states: Dictionary) -> void:
+	if not NetworkManager.is_client or not _portals_allowed():
+		return
+	for pair_id: Variant in states:
+		var pair: PortalPair = _portal_pairs.get(pair_id) as PortalPair
+		if pair != null and states[pair_id] is Dictionary:
+			pair.apply_open_state(states[pair_id])
+
+
+func _on_portal_player_teleported(player: GamePlayer, departure: Vector2, arrival: Vector2, pair_id: String) -> void:
+	# Reuse the movement epoch already checked by request_move and dash snapshots.
+	# Packets sent before this transfer can no longer move the server player back.
+	player.lumi_dash_revision += 1
+	if NetworkManager.is_host:
+		sync_portal_transfer.rpc(pair_id, int(player.peer_id), departure, arrival,
+			player.lumi_dash_revision, player.lumi_dash_active)
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_portal_transfer(
+	pair_id: String, player_id: int, departure: Vector2, arrival: Vector2,
+	revision: int, dash_active: bool
+) -> void:
+	if not NetworkManager.is_client or not _portals_allowed():
+		return
+	var pair: PortalPair = _portal_pairs.get(pair_id) as PortalPair
+	if pair == null or not departure.is_finite() or not arrival.is_finite() or revision < 0:
+		return
+	var effect_key: String = "%s:%d" % [pair_id, player_id]
+	if revision <= int(_portal_effect_revisions.get(effect_key, -1)):
+		return
+	_portal_effect_revisions[effect_key] = revision
+	pair.play_transfer_effect(departure, arrival)
+	var transfer: Dictionary = {"position": arrival, "revision": revision, "dash_active": dash_active}
+	var player: GamePlayer = _find_player(player_id)
+	if player == null:
+		_pending_portal_transfers[player_id] = transfer
+	else:
+		_apply_portal_position(player, transfer)
+
+
+func _apply_portal_position(player: GamePlayer, transfer: Dictionary) -> void:
+	var revision: int = int(transfer["revision"])
+	# A snapshot or newer dash may already have applied this movement epoch.
+	if revision <= player.lumi_dash_revision:
+		return
+	var arrival: Vector2 = transfer["position"]
+	player.apply_lumi_dash_snapshot(revision, bool(transfer["dash_active"]), arrival)
+	player.knockback_velocity = Vector2.ZERO
+	player.network_position_q = Vector2i(NetworkManager.quantize(arrival.x), NetworkManager.quantize(arrival.y))
+
+
+func _apply_pending_portal_transfer(player: GamePlayer) -> void:
+	var player_id: int = int(player.peer_id)
+	if _pending_portal_transfers.has(player_id):
+		_apply_portal_position(player, _pending_portal_transfers[player_id])
+		_pending_portal_transfers.erase(player_id)
+
 
 func is_battle_royale_mode() -> bool:
 	return NetworkManager.game_mode == MODE_BATTLE_ROYALE
@@ -65,6 +186,7 @@ func _ready() -> void:
 	_start_music()
 	_select_and_load_map()
 	_configure_match_rules()
+	_configure_portals()
 	call_deferred("_configure_existing_entity_synchronizers")
 	_setup_navigation.call_deferred()
 	if NetworkManager.is_single:
@@ -150,6 +272,8 @@ func _finish_match(won: bool, reason: String) -> void:
 	if match_finished:
 		return
 	match_finished = true
+	for pair: PortalPair in _portal_pairs.values():
+		pair._set_open(false)
 	match_status = ("ПОБЕДА — " if won else "ПОРАЖЕНИЕ — ") + reason
 
 
@@ -166,6 +290,19 @@ func get_zone_text() -> String:
 	if not is_battle_royale_mode():
 		return ""
 	return "ЗОНА %dm" % roundi(zone_radius)
+
+
+func get_portal_hud_state() -> Dictionary:
+	if not _portals_allowed() or match_finished or _portal_pairs.is_empty():
+		return {"available": false}
+	var first_pair: PortalPair = _portal_pairs.values().front() as PortalPair
+	if first_pair == null:
+		return {"available": false}
+	return {
+		"available": true,
+		"open": first_pair.is_open,
+		"remaining": maxf(first_pair._remaining, 0.0),
+	}
 
 
 @rpc("authority", "call_remote", "unreliable")
@@ -229,6 +366,7 @@ func _broadcast_snapshot() -> void:
 			"tick": tick,
 			"players": visible_players,
 			"zombies": visible_zombies,
+			"portals": _portal_states(),
 		})
 
 func _find_zombie(p_zombie_id: String) -> GameZombie:
@@ -245,6 +383,7 @@ func _receive_snapshot(snapshot: Dictionary) -> void:
 
 
 func _apply_snapshot(snapshot: Dictionary) -> void:
+	sync_portal_states(snapshot.get("portals", {}) as Dictionary)
 	var players_state: Dictionary = snapshot.get("players", {}) as Dictionary
 	for raw_id: Variant in players_state.keys():
 		var player_id: int = int(raw_id)
@@ -256,9 +395,13 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 		var dash_revision: int = int(player_state.get("dash_revision", 0))
 		if dash_revision < player.lumi_dash_revision:
 			continue
+		var movement_changed: bool = dash_revision > player.lumi_dash_revision
 		var dash_position_applied: bool = player.apply_lumi_dash_snapshot(
 			dash_revision, bool(player_state.get("dash_active", false)), server_position
 		)
+		if movement_changed:
+			player.knockback_velocity = Vector2.ZERO
+			player.network_position_q = Vector2i(NetworkManager.quantize(server_position.x), NetworkManager.quantize(server_position.y))
 		if not dash_position_applied:
 			if player_id == multiplayer.get_unique_id():
 				if player.global_position.distance_to(server_position) > 50.0:
@@ -451,6 +594,7 @@ func _spawn_player(data: Variant) -> Node:
 		player.is_local = true
 		call_deferred("_bind_local_player", player)
 	call_deferred("_configure_synchronizers_for_entity", player)
+	call_deferred("_apply_pending_portal_transfer", player)
 	return player
 
 
@@ -496,12 +640,15 @@ func client_game_ready() -> void:
 		return
 	var client_id: int = multiplayer.get_remote_sender_id()
 	_spawn_online_player(client_id)
+	sync_portal_states.rpc_id(client_id, _portal_states())
 	for node: Node in entities.get_children():
 		if node is GamePlayer:
 			var player := node as GamePlayer
 			sync_player_snapshot.rpc_id(client_id, {
 				"peer_id": int(player.peer_id),
-				"position": player.global_position
+				"position": player.global_position,
+				"revision": player.lumi_dash_revision,
+				"dash_active": player.lumi_dash_active
 			})
 		elif node is GameChest:
 			var chest := node as GameChest
@@ -525,6 +672,9 @@ func sync_player_snapshot(data: Dictionary) -> void:
 	var player_id: int = int(data.get("peer_id", 1))
 	if _find_player(player_id) == null:
 		entities.add_child(_spawn_player(data), true)
+	var player: GamePlayer = _find_player(player_id)
+	if player != null and data.has("revision"):
+		_apply_portal_position(player, data)
 
 
 @rpc("authority", "call_remote", "reliable")

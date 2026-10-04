@@ -52,9 +52,9 @@ vertical_alignment = 1
 [node name="PulsePanel" type="Panel" parent="HUDRoot"]
 visible = false
 offset_left = 24.0
-offset_top = 194.0
+offset_top = 254.0
 offset_right = 224.0
-offset_bottom = 246.0
+offset_bottom = 306.0
 mouse_filter = 2
 
 [node name="PulseStatus" type="Label" parent="HUDRoot/PulsePanel"]
@@ -76,6 +76,36 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
 theme_override_font_sizes/font_size = 11
 text = "Метки видны только вам"
+
+[node name="PortalPanel" type="Panel" parent="HUDRoot"]
+visible = false
+offset_left = 24.0
+offset_top = 194.0
+offset_right = 282.0
+offset_bottom = 246.0
+mouse_filter = 2
+
+[node name="PortalStatus" type="Label" parent="HUDRoot/PortalPanel"]
+offset_left = 12.0
+offset_top = 5.0
+offset_right = 246.0
+offset_bottom = 26.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.66, 0.55, 1, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.03, 0.16, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+text = "ИСКРОВОЙ МАРШРУТ: ЗАРЯДКА"
+
+[node name="PortalHint" type="Label" parent="HUDRoot/PortalPanel"]
+offset_left = 12.0
+offset_top = 28.0
+offset_right = 246.0
+offset_bottom = 46.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.84, 0.8, 0.97, 1)
+theme_override_font_sizes/font_size = 11
+text = "Парные порталы через 12 с"
 
 [node name="MatchPanel" type="Panel" parent="HUDRoot"]
 offset_left = 493.0

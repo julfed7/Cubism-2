@@ -165,7 +165,11 @@ func get_trajectory_for(id: String, is_zombie: bool) -> Dictionary:
 		return {}
 	var pos: Vector2 = Vector2(float(last_data.get("x", 0.0)), float(last_data.get("y", 0.0)))
 	var vel: Vector2 = Vector2.ZERO
-	if not prev_data.is_empty():
+	# Teleports and dashes start a new movement epoch, never a long trajectory.
+	var same_movement: bool = is_zombie or (
+		int(last_data.get("dash_revision", 0)) == int(prev_data.get("dash_revision", 0))
+	)
+	if not prev_data.is_empty() and same_movement:
 		vel = Vector2(
 			float(last_data.get("x", 0.0)) - float(prev_data.get("x", 0.0)),
 			float(last_data.get("y", 0.0)) - float(prev_data.get("y", 0.0))

@@ -3,6 +3,8 @@
 [ext_resource type="PackedScene" path="res://scenes/objects/PlayerSpawn.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/objects/Zombie.tscn" id="3_zombie"]
 [ext_resource type="PackedScene" path="res://scenes/objects/Bush.tscn" id="4_bush"]
+[ext_resource type="PackedScene" path="res://scenes/objects/PortalPair.tscn" id="5_portals"]
+
 [node name="City" type="Node2D"]
 [node name="TileMapLayer" type="TileMapLayer" parent="." groups=["ground_tiles"]]
 tile_set = ExtResource("1")
@@ -17,6 +19,11 @@ position = Vector2(-320, 210)
 
 [node name="ChestSpawnCenter" type="Marker2D" parent="." groups=["chest_spawn"]]
 position = Vector2(0, -20)
+
+; Northwest to southeast route across the center, outside the bush/loot lanes.
+[node name="PortalPair" parent="." instance=ExtResource("5_portals")]
+point_a = Vector2(-425, -275)
+point_b = Vector2(425, 225)
 
 [node name="BushNorth" parent="." instance=ExtResource("4_bush")]
 position = Vector2(470, -260)

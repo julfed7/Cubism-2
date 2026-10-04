@@ -28,6 +28,9 @@ class_name GameHUD
 @onready var pulse_marker_template: Label = $HUDRoot/PulseMarkers/MarkerTemplate
 @onready var pulse_panel: Panel = $HUDRoot/PulsePanel
 @onready var pulse_status: Label = $HUDRoot/PulsePanel/PulseStatus
+@onready var portal_panel: Panel = $HUDRoot/PortalPanel
+@onready var portal_status: Label = $HUDRoot/PortalPanel/PortalStatus
+@onready var portal_hint: Label = $HUDRoot/PortalPanel/PortalHint
 
 var slot_panels: Array[Panel] = []
 var slot_icons: Array[TextureRect] = []
@@ -81,6 +84,8 @@ func _ready() -> void:
 	pulse_style.shadow_offset = Vector2(0.0, 3.0)
 	pulse_panel.add_theme_stylebox_override("panel", pulse_style)
 	pulse_marker_template.add_theme_stylebox_override("normal", pulse_style)
+	portal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color("211450"), Color("8e68e8"), 3))
+	portal_panel.hide()
 	for child: Node in slot_container.get_children():
 		if child is Panel:
 			var panel: Panel = child as Panel
@@ -101,6 +106,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_update_pulse_markers()
 	var game: Node = get_tree().current_scene
+	_update_portal_hint(game)
 	if game != null and game.has_method("get_match_time_text"):
 		match_time_label.text = str(game.call("get_match_time_text"))
 		match_mode_label.text = str(game.call("get_match_status_text"))
@@ -133,6 +139,27 @@ func _process(_delta: float) -> void:
 		ammo_label.text = "Магазин: %d / Запас: %d" % [loaded, reserve]
 		reload_button.disabled = loaded >= int(weapon.get("magazine_size", 0)) or reserve <= 0
 
+
+func _update_portal_hint(game: Node) -> void:
+	if game == null or not game.has_method("get_portal_hud_state"):
+		portal_panel.hide()
+		return
+	var state: Dictionary = game.call("get_portal_hud_state") as Dictionary
+	if not bool(state.get("available", false)):
+		portal_panel.hide()
+		return
+	portal_panel.show()
+	var seconds: int = maxi(0, ceili(float(state.get("remaining", 0.0))))
+	if bool(state.get("open", false)):
+		portal_status.text = "⚡ ИСКРОВОЙ МАРШРУТ: ОТКРЫТ"
+		portal_hint.text = "Войдите в сияние — %d с" % seconds
+		portal_status.add_theme_color_override("font_color", Color("fff08a"))
+		portal_hint.add_theme_color_override("font_color", Color("e8ddff"))
+	else:
+		portal_status.text = "ИСКРОВОЙ МАРШРУТ: ЗАРЯДКА"
+		portal_hint.text = "Парные порталы через %d с" % seconds
+		portal_status.add_theme_color_override("font_color", Color("a98cff"))
+		portal_hint.add_theme_color_override("font_color", Color("d7ccf8"))
 
 func _update_pulse_markers() -> void:
 	# Query only the viewport owner's private detections, even on the host.

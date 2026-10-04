@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/portal_pair.gd" id="1_pair"]
+[ext_resource type="Script" path="res://scripts/portal_endpoint.gd" id="2_visual"]
+
+[sub_resource type="CircleShape2D" id="Circle_A"]
+resource_local_to_scene = true
+radius = 38.0
+
+[sub_resource type="CircleShape2D" id="Circle_B"]
+resource_local_to_scene = true
+radius = 38.0
+
+[node name="PortalPair" type="Node2D"]
+script = ExtResource("1_pair")
+
+[node name="PortalA" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+script = ExtResource("2_visual")
+
+[node name="EntryShape" type="CollisionShape2D" parent="PortalA"]
+shape = SubResource("Circle_A")
+disabled = true
+
+[node name="PortalB" type="Area2D" parent="."]
+position = Vector2(400, 0)
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+script = ExtResource("2_visual")
+endpoint_index = 1
+
+[node name="EntryShape" type="CollisionShape2D" parent="PortalB"]
+shape = SubResource("Circle_B")
+disabled = true

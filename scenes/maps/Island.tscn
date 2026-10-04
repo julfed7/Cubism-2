@@ -4,6 +4,8 @@
 [ext_resource type="PackedScene" path="res://scenes/objects/PlayerSpawn.tscn" id="2_spawn"]
 [ext_resource type="PackedScene" uid="uid://cpr72auxao65g" path="res://scenes/objects/Zombie.tscn" id="4_zombie"]
 
+[ext_resource type="PackedScene" path="res://scenes/objects/PortalPair.tscn" id="5_portals"]
+
 [node name="Island" type="Node2D" unique_id=1307605302]
 
 [node name="TileMapLayer" type="TileMapLayer" parent="." groups=["ground_tiles"] unique_id=1459889763]
@@ -18,6 +20,11 @@ position = Vector2(200, 0)
 
 [node name="ChestSpawn2" type="Marker2D" parent="." groups=["chest_spawn"]]
 position = Vector2(-200, 150)
+
+; West clearing to southeast flank, clear of the ruins and central spawn/loot.
+[node name="PortalPair" parent="." instance=ExtResource("5_portals")]
+point_a = Vector2(-625, -114)
+point_b = Vector2(575, 336)
 
 [node name="Zombie1" parent="." unique_id=125113464 instance=ExtResource("4_zombie")]
 position = Vector2(421, 270)
