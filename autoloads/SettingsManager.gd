@@ -62,6 +62,8 @@ func _load_settings() -> void:
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
+	# Keep GameState's currencies and contracts when changing audio settings.
+	config.load(SETTINGS_PATH)
 	config.set_value("player", "nickname", nickname)
 	config.set_value("audio", "music", music_volume)
 	config.set_value("audio", "sfx", sfx_volume)

@@ -268,12 +268,16 @@ func _remaining_enemies() -> int:
 	return remaining
 
 func _finish_match(won: bool, reason: String) -> void:
-	if NetworkManager.is_single and not _progress_saved:
-		_progress_saved = true
-		GameState.record_match(won)
 	if match_finished:
 		return
 	match_finished = true
+	if NetworkManager.is_single and not _progress_saved:
+		_progress_saved = true
+		var collected_crystals: int = 0
+		var local_player: GamePlayer = _find_player(1)
+		if is_crystal_capture_mode() and local_player != null:
+			collected_crystals = maxi(0, local_player.crystals)
+		GameState.record_match(won, collected_crystals)
 	for pair: PortalPair in _portal_pairs.values():
 		pair._set_open(false)
 	match_status = ("ПОБЕДА — " if won else "ПОРАЖЕНИЕ — ") + reason
