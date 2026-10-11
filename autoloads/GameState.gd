@@ -6,7 +6,6 @@ const CONTRACT_PERIOD_SECONDS: int = 24 * 60 * 60
 const CONTRACT_DEFINITIONS: Array[Dictionary] = [
 	{"id": "play_matches", "title": "Сыграть матчи", "target": 5, "reward": 100},
 	{"id": "win_matches", "title": "Победить в матчах", "target": 3, "reward": 150},
-	{"id": "collect_crystals", "title": "Собрать кристаллы", "target": 20, "reward": 120},
 ]
 
 var nickname: String = ""
@@ -74,7 +73,7 @@ func get_contracts() -> Array[Dictionary]:
 	refresh_contracts()
 	return contracts.duplicate(true)
 
-# IDs: play_matches, win_matches, collect_crystals.
+# IDs: play_matches, win_matches.
 func add_contract_progress(contract_id: String, amount: int = 1) -> bool:
 	refresh_contracts()
 	if not _advance_contract_progress(contract_id, amount):
@@ -123,7 +122,7 @@ func set_nickname(value: String) -> void:
 		nickname = "Player"
 	_save_progress()
 
-func record_match(won: bool, collected_crystals: int = 0) -> void:
+func record_match(won: bool) -> void:
 	refresh_contracts()
 	matches_played += 1
 	if won:
@@ -135,8 +134,6 @@ func record_match(won: bool, collected_crystals: int = 0) -> void:
 	if won:
 		if _advance_contract_progress("win_matches", 1):
 			changed = true
-	if _advance_contract_progress("collect_crystals", collected_crystals):
-		changed = true
 	_save_progress()
 	if changed:
 		contracts_changed.emit()

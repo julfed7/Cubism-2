@@ -57,14 +57,6 @@ custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 placeholder_text = "Room"
 
-[node name="ModeLabel" type="Label" parent="Center/Form"]
-layout_mode = 2
-text = "Режим"
-
-[node name="ModeOption" type="OptionButton" parent="Center/Form"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-
 [node name="MapLabel" type="Label" parent="Center/Form"]
 layout_mode = 2
 text = "Карта"

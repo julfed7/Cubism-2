@@ -69,7 +69,7 @@ vertical_alignment = 1
 [node name="Subtitle" type="Label" parent="Margin/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "Играй в классический и королевский режимы, собирай кристаллы и забирай монеты!"
+text = "Играй в матчах, выполняй контракты и забирай монеты!"
 horizontal_alignment = 1
 autowrap_mode = 2
 

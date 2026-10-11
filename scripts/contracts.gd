@@ -5,8 +5,7 @@ const GOLD := Color(1.0, 0.78, 0.12)
 const ACCENTS: Array[Color] = [Color(0.1, 0.64, 1.0), Color(1.0, 0.4, 0.22), Color(0.67, 0.34, 1.0)]
 const DESCRIPTIONS: Dictionary = {
 	"play_matches": "Завершай матчи в любом режиме.",
-	"win_matches": "Побеждай в классическом и королевском режимах или в захвате кристаллов.",
-	"collect_crystals": "Подбирай кристаллы в режиме захвата кристаллов.",
+	"win_matches": "Побеждай в матчах.",
 }
 
 @onready var cards: HBoxContainer = %Cards

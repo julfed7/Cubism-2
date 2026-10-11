@@ -1,12 +1,9 @@
 extends Control
 
-var selected_mode: String = ""
 var searching: bool = false
 
 @onready var title_label: Label = $Title
-@onready var mode_screen: VBoxContainer = $Center/ModeScreen
 @onready var map_screen: VBoxContainer = $Center/MapScreen
-@onready var mode_option: OptionButton = $Center/MapScreen/ModeOption
 @onready var map_option: OptionButton = $Center/MapScreen/MapOption
 @onready var status_label: Label = $Status
 
@@ -19,34 +16,10 @@ func _ready() -> void:
 	NetworkManager.waiting_for_host.connect(_on_waiting_for_host)
 	NetworkManager.match_found.connect(_on_match_found)
 	NetworkManager.network_error.connect(_on_network_error)
-	mode_option.clear()
-	mode_option.add_item("Классический")
-	mode_option.add_item("Королевская битва")
-	mode_option.add_item("Захват кристаллов")
-	mode_option.select(0)
 	map_option.clear()
 	map_option.add_item("Island")
 	map_option.add_item("City")
-	map_option.add_item("CrystalArena")
 	map_option.select(0)
-	_show_modes()
-
-
-func _on_classic_pressed() -> void:
-	selected_mode = "classic"
-	mode_option.select(0)
-	_show_maps()
-
-
-func _on_battle_royale_pressed() -> void:
-	selected_mode = "battle_royale"
-	mode_option.select(1)
-	_show_maps()
-
-
-func _on_crystal_capture_pressed() -> void:
-	selected_mode = "crystal_capture"
-	mode_option.select(2)
 	_show_maps()
 
 
@@ -59,43 +32,22 @@ func _on_city_pressed() -> void:
 
 
 func _on_play_pressed() -> void:
-	var mode_text: String = mode_option.get_item_text(mode_option.selected)
-	var map_text: String = map_option.get_item_text(map_option.selected)
-	print("[JoinRoom] Нажата кнопка Играть. mode=", mode_text, " map=", map_text)
-	_find_match(mode_text, map_text)
-
-
-func _find_match(mode: String, selected_map: String) -> void:
+	var selected_map: String = map_option.get_item_text(map_option.selected)
+	print("[JoinRoom] Нажата кнопка Играть. map=", selected_map)
 	if searching:
 		return
-	selected_mode = mode
 	searching = true
 	status_label.text = "Подключение к матчмейкеру…"
-	NetworkManager.find_match(selected_mode, selected_map)
-
-
-func _show_modes() -> void:
-	mode_screen.visible = true
-	map_screen.visible = false
-	title_label.text = "ВЫБЕРИ РЕЖИМ"
-	status_label.text = ""
+	NetworkManager.find_match("battle_royale", selected_map)
 
 
 func _show_maps() -> void:
-	mode_screen.visible = false
 	map_screen.visible = true
 	title_label.text = "ВЫБЕРИ КАРТУ"
-	status_label.text = "Режим: %s" % ("Классика" if selected_mode == "classic" else ("Захват кристаллов" if selected_mode == "crystal_capture" else "Королевская битва"))
-
-
-func _on_back_to_modes_pressed() -> void:
-	_show_modes()
+	status_label.text = "Королевская битва"
 
 
 func _on_back_pressed() -> void:
-	if map_screen.visible and not searching:
-		_show_modes()
-		return
 	UISoundManager.play_ui_sound("menu_close.wav")
 	NetworkManager.reset()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")

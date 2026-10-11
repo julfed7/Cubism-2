@@ -4,7 +4,6 @@ const PLAYER_SCENE: PackedScene = preload("res://scenes/objects/Player.tscn")
 const BULLET_SCENE: PackedScene = preload("res://scenes/objects/Bullet.tscn")
 const PICKUP_SCENE: PackedScene = preload("res://scenes/objects/Pickup.tscn")
 const CHEST_SCENE: PackedScene = preload("res://scenes/objects/Chest.tscn")
-const CRYSTAL_SCENE: PackedScene = preload("res://scenes/objects/Crystal.tscn")
 const NOISE_LURE_SCENE: PackedScene = preload("res://scenes/objects/NoiseLure.tscn")
 const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.tscn")
 
@@ -17,13 +16,11 @@ const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.
 @onready var bullet_spawner: MultiplayerSpawner = $BulletSpawner
 @onready var pickup_spawner: MultiplayerSpawner = $PickupSpawner
 @onready var chest_spawner: MultiplayerSpawner = $ChestSpawner
-@onready var crystal_spawner: MultiplayerSpawner = $CrystalSpawner
 @onready var match_music: AudioStreamPlayer = $MatchMusic
 
 var _next_pickup_id: int = 1
 var _next_bullet_id: int = 1
 var _next_noise_lure_id: int = 1
-var _crystal_positions: Array[Vector2] = [Vector2(0, 0), Vector2(-275, -125), Vector2(275, -125), Vector2(-275, 125), Vector2(275, 125)]
 var _server_fire_at: Dictionary = {}
 var sync_timer: float = 0.0
 const SYNC_INTERVAL: float = 0.033
@@ -31,7 +28,6 @@ const SYNC_INTERVAL: float = 0.033
 
 const MODE_CLASSIC := "classic"
 const MODE_BATTLE_ROYALE := "battle_royale"
-const MODE_CRYSTAL_CAPTURE := "crystal_capture"
 
 # One shared cadence keeps the portal window readable in both supported modes.
 # A short warning period prevents an immediate route change at match start.
@@ -56,7 +52,7 @@ var _portal_effect_revisions: Dictionary = {}
 
 
 func _portals_allowed() -> bool:
-	return NetworkManager.game_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE] and not is_crystal_capture_mode()
+	return NetworkManager.game_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE]
 
 
 func _configure_portals() -> void:
@@ -173,10 +169,10 @@ func can_respawn(_player_id: int = 1) -> bool:
 
 
 func _configure_match_rules() -> void:
-	match_time_left = 150.0 if NetworkManager.game_mode == MODE_CLASSIC else (120.0 if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE else 210.0)
+	match_time_left = 150.0 if NetworkManager.game_mode == MODE_CLASSIC else 210.0
 	zone_start_radius = 1200.0
 	zone_radius = zone_start_radius
-	match_status = "Классический бой" if NetworkManager.game_mode == MODE_CLASSIC else ("Захват кристаллов" if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE else "Королевская битва")
+	match_status = "Классический бой" if NetworkManager.game_mode == MODE_CLASSIC else "Королевская битва"
 	if has_node("MatchOverlay"):
 		$MatchOverlay.configure(zone_center, zone_radius, is_battle_royale_mode())
 
@@ -194,7 +190,6 @@ func _ready() -> void:
 		entities.add_child(player, true)
 		_bind_local_player(player)
 		_spawn_chests()
-		_spawn_crystals()
 		return
 	if not NetworkManager.player_connected.is_connected(_on_peer_joined_game):
 		NetworkManager.player_connected.connect(_on_peer_joined_game)
@@ -207,7 +202,6 @@ func _ready() -> void:
 		for peer: int in multiplayer.get_peers():
 			_spawn_online_player(peer)
 		_spawn_chests()
-		_spawn_crystals()
 	else:
 		await get_tree().process_frame
 		_bind_existing_local_player()
@@ -247,9 +241,7 @@ func _tick_match_rules(delta: float) -> void:
 	var local_player: GamePlayer = _find_player(multiplayer.get_unique_id())
 	if local_player == null and NetworkManager.is_single:
 		local_player = _find_player(1)
-	if NetworkManager.game_mode == MODE_CRYSTAL_CAPTURE and local_player != null and local_player.crystals >= 10:
-		_finish_match(true, "Команда собрала 10 кристаллов")
-	elif match_time_left <= 0.0:
+	if match_time_left <= 0.0:
 		_finish_match(true, "Время матча вышло")
 	_state_sync_timer += delta
 	if _state_sync_timer >= 0.2:
@@ -271,11 +263,7 @@ func _finish_match(won: bool, reason: String) -> void:
 	match_finished = true
 	if NetworkManager.is_single and not _progress_saved:
 		_progress_saved = true
-		var collected_crystals: int = 0
-		var local_player: GamePlayer = _find_player(1)
-		if is_crystal_capture_mode() and local_player != null:
-			collected_crystals = maxi(0, local_player.crystals)
-		GameState.record_match(won, collected_crystals)
+		GameState.record_match(won)
 	for pair: PortalPair in _portal_pairs.values():
 		pair._set_open(false)
 	match_status = ("ПОБЕДА — " if won else "ПОРАЖЕНИЕ — ") + reason
@@ -332,7 +320,6 @@ func _broadcast_snapshot() -> void:
 			"y": world_position.y,
 			"rot": player.rotation,
 			"hp": player.hp,
-			"crystals": player.crystals,
 			"movement_revision": player.movement_revision,
 		}
 	for node: Node in get_tree().get_nodes_in_group("enemy"):
@@ -412,7 +399,6 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 					var trajectory_velocity: Vector2 = Vector2(trajectory.get("vel", Vector2.ZERO))
 					player.set_trajectory(trajectory_position, trajectory_velocity)
 		player.hp = float(player_state.get("hp", player.hp))
-		player.crystals = int(player_state.get("crystals", player.crystals))
 
 	var zombies_state: Dictionary = snapshot.get("zombies", {}) as Dictionary
 	for raw_id: Variant in zombies_state.keys():
@@ -437,7 +423,6 @@ func _configure_spawners() -> void:
 	bullet_spawner.spawn_function = _spawn_bullet
 	pickup_spawner.spawn_function = _spawn_pickup
 	chest_spawner.spawn_function = _spawn_chest
-	crystal_spawner.spawn_function = _spawn_crystal
 
 
 func _configure_existing_entity_synchronizers() -> void:
@@ -507,24 +492,14 @@ func _update_adaptive_sync_rates() -> void:
 				synchronizer.replication_interval = interval
 
 
-func is_crystal_capture_mode() -> bool:
-	return NetworkManager.game_mode == "crystal_capture" or (NetworkManager.is_single and GameState.current_level == 3)
-
-
 func _select_and_load_map() -> void:
 	if NetworkManager.is_single:
 		var requested_mode: String = GameState.current_mode
 		if GameState.current_level == 0 and requested_mode.is_empty():
 			requested_mode = NetworkManager.game_mode
-		if requested_mode == MODE_CRYSTAL_CAPTURE or GameState.current_level == 3:
-			requested_mode = MODE_CRYSTAL_CAPTURE
-			NetworkManager.game_mode = requested_mode
-			NetworkManager.map_name = "CrystalArena"
-			NetworkManager.map_path = "res://scenes/maps/CrystalArena.tscn"
-		else:
-			NetworkManager.game_mode = requested_mode if requested_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE] else MODE_BATTLE_ROYALE
-			NetworkManager.current_map_index = clampi(GameState.current_level - 1, 0, MapManager.maps.size() - 1)
-			NetworkManager.map_name = "Island" if NetworkManager.current_map_index == 0 else "City"
+		NetworkManager.game_mode = requested_mode if requested_mode in [MODE_CLASSIC, MODE_BATTLE_ROYALE] else MODE_BATTLE_ROYALE
+		NetworkManager.current_map_index = clampi(GameState.current_level - 1, 0, MapManager.maps.size() - 1)
+		NetworkManager.map_name = "Island" if NetworkManager.current_map_index == 0 else "City"
 		NetworkManager.map_path = "res://scenes/maps/%s.tscn" % NetworkManager.map_name
 	var selected_map: PackedScene = null
 	if ResourceLoader.exists(NetworkManager.map_path):
@@ -646,9 +621,6 @@ func client_game_ready() -> void:
 		elif node is GameChest:
 			var chest := node as GameChest
 			sync_chest_snapshot.rpc_id(client_id, {"id": chest.chest_id, "position": chest.global_position})
-		elif node is GameCrystal:
-			var crystal := node as GameCrystal
-			sync_crystal_snapshot.rpc_id(client_id, {"id": crystal.crystal_id, "position": crystal.global_position})
 		elif node is GamePickup:
 			var pickup := node as GamePickup
 			sync_pickup_snapshot.rpc_id(client_id, {
@@ -677,12 +649,6 @@ func sync_player_snapshot(data: Dictionary) -> void:
 func sync_chest_snapshot(data: Dictionary) -> void:
 	if _find_chest(str(data.get("id", ""))) == null:
 		entities.add_child(_spawn_chest(data), true)
-
-
-@rpc("authority", "call_remote", "reliable")
-func sync_crystal_snapshot(data: Dictionary) -> void:
-	if _find_crystal(str(data.get("id", ""))) == null:
-		entities.add_child(_spawn_crystal(data), true)
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -852,71 +818,6 @@ func on_player_died(player_id: int) -> void:
 		player.visible = false
 		player.set_physics_process(false)
 		player.get_node("CollisionShape2D").set_deferred("disabled", true)
-
-
-func _spawn_crystals() -> void:
-	if not is_crystal_capture_mode() or (not NetworkManager.is_single and not NetworkManager.is_host):
-		return
-	for index: int in range(_crystal_positions.size()):
-		var data: Dictionary = {"id": "crystal_%d" % index, "position": _crystal_positions[index]}
-		if NetworkManager.is_single:
-			entities.add_child(_spawn_crystal(data), true)
-		else:
-			crystal_spawner.spawn(data)
-
-
-func _spawn_crystal(data: Variant) -> Node:
-	var crystal_data: Dictionary = data as Dictionary
-	var crystal := CRYSTAL_SCENE.instantiate() as GameCrystal
-	crystal.name = str(crystal_data.get("id", "Crystal"))
-	crystal.crystal_id = crystal.name
-	crystal.global_position = crystal_data.get("position", Vector2.ZERO)
-	crystal.set_multiplayer_authority(1, true)
-	return crystal
-
-
-func _find_crystal(crystal_id: String) -> GameCrystal:
-	for node: Node in entities.get_children():
-		if node is GameCrystal and (node as GameCrystal).crystal_id == crystal_id:
-			return node as GameCrystal
-	return null
-
-
-func capture_crystal_authoritative(crystal_id: String, player_id: int) -> void:
-	if not is_crystal_capture_mode() or (not NetworkManager.is_single and not NetworkManager.is_host):
-		return
-	var player: GamePlayer = _find_player(player_id)
-	var crystal: GameCrystal = _find_crystal(crystal_id)
-	if player == null or crystal == null or not player.visible or player.global_position.distance_to(crystal.global_position) > 85.0:
-		return
-	var captured_position: Vector2 = crystal.global_position
-	player.crystals += 1
-	if not NetworkManager.is_single:
-		sync_crystal_captured.rpc(crystal_id, player_id, player.crystals)
-	else:
-		crystal.play_captured()
-	_respawn_crystal_later(captured_position, crystal_id)
-
-
-@rpc("authority", "call_local", "reliable")
-func sync_crystal_captured(crystal_id: String, player_id: int, total: int) -> void:
-	var player: GamePlayer = _find_player(player_id)
-	if player != null:
-		player.crystals = total
-	var crystal: GameCrystal = _find_crystal(crystal_id)
-	if crystal != null:
-		crystal.play_captured()
-
-
-func _respawn_crystal_later(position: Vector2, crystal_id: String) -> void:
-	await get_tree().create_timer(3.0).timeout
-	if not is_inside_tree() or (not NetworkManager.is_single and not NetworkManager.is_host):
-		return
-	var data: Dictionary = {"id": crystal_id, "position": position}
-	if NetworkManager.is_single:
-		entities.add_child(_spawn_crystal(data), true)
-	else:
-		crystal_spawner.spawn(data)
 
 
 func _spawn_chests() -> void:
@@ -1150,9 +1051,6 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				var weapon_id: String = str(action.get("weapon_id", ""))
 				var loaded: int = reload_player._reload_weapon(weapon_id)
 				confirm_reload.rpc_id(player_id, weapon_id, loaded, reload_player.inventory.make_snapshot())
-		"capture_crystal":
-			if is_crystal_capture_mode():
-				capture_crystal_authoritative(str(action.get("entity_id", "")), player_id)
 		"melee_attack":
 			var attacker: GamePlayer = _find_player(player_id)
 			if attacker == null or not attacker.visible or attacker.hp <= 0.0:
@@ -1176,13 +1074,12 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				float(direction_values[1])
 			).normalized()
 			var offset: Vector2 = target.global_position - attacker.global_position
-			var is_crystal_blade: bool = str(attacker.current_weapon.get("id", "")) == "crystal_blade"
-			var max_range: float = 72.0 if is_crystal_blade else 60.0
+			var max_range: float = 60.0
 			if direction.length_squared() <= 0.001 or offset.length() > max_range or offset.length_squared() <= 0.001:
 				return
 			if absf(direction.angle_to(offset)) > deg_to_rad(60.0):
 				return
-			var damage: float = 26.0 if is_crystal_blade else (15.0 if attacker.current_weapon.is_empty() else 10.0)
+			var damage: float = 15.0 if attacker.current_weapon.is_empty() else 10.0
 			if target is GamePlayer:
 				(target as GamePlayer).take_contact_damage(damage, attacker.global_position, 400.0)
 			else:

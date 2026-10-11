@@ -4,8 +4,8 @@ class_name GamePlayer
 # Локальный игрок обрабатывает ввод и синхронизирует позицию по сети.
 signal player_died(player_id: int)
 
-const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle", "crystal_blade"]
-const MELEE_WEAPON_IDS: Array[String] = ["crystal_blade"]
+const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
+const MELEE_WEAPON_IDS: Array[String] = []
 const SNAPSHOT_INTERVAL: float = 0.033
 var movement_revision: int = 0
 
@@ -26,7 +26,6 @@ var current_weapon: Dictionary = {}
 var magazine: Dictionary = {}
 var ammo_reserve: Dictionary = {}
 var coins: int = 0
-var crystals: int = 0
 var hp: float = 100.0
 var max_hp: float = 100.0
 var network_weapon_id: String = ""
@@ -75,14 +74,9 @@ func _ready() -> void:
 			joystick.aim_position_changed.connect(_on_aim_position_changed)
 	_update_stealth_visual()
 	_on_inventory_changed()
-	var current_game: Node = get_tree().current_scene
-	if current_game == null or not current_game.has_method("is_crystal_capture_mode") or not current_game.is_crystal_capture_mode():
-		if inventory.add_item("pistol"):
-			inventory.add_item("ammo_pistol", 24)
-			select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
-	if current_game != null and current_game.has_method("is_crystal_capture_mode") and current_game.is_crystal_capture_mode():
-		if inventory.add_item("crystal_blade"):
-			select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
+	if inventory.add_item("pistol"):
+		inventory.add_item("ammo_pistol", 24)
+		select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
 	var death_panel: Node = get_tree().current_scene.get_node_or_null("UI/DeathPanel")
 	if is_local and death_panel != null and death_panel.has_signal("respawn_requested"):
 		death_panel.respawn_requested.connect(_respawn)
@@ -512,9 +506,8 @@ func melee_attack() -> void:
 		return
 	var direction: Vector2 = _get_aim_direction()
 	var my_position: Vector2 = global_position
-	var is_crystal_blade: bool = str(current_weapon.get("id", "")) == "crystal_blade"
-	var damage: float = 26.0 if is_crystal_blade else (15.0 if current_weapon.is_empty() else 10.0)
-	var attack_range: float = 72.0 if is_crystal_blade else 60.0
+	var damage: float = 15.0 if current_weapon.is_empty() else 10.0
+	var attack_range: float = 60.0
 	var knockback_force: float = 400.0
 	_melee_timer = 0.45
 

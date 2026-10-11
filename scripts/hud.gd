@@ -9,8 +9,6 @@ class_name GameHUD
 @onready var ammo_label: Label = $HUDRoot/AmmoLabel
 @onready var slot_container: HBoxContainer = $HUDRoot/SlotContainer
 @onready var selected_item_label: Label = $HUDRoot/SelectedItemLabel
-@onready var crystal_panel: Panel = $HUDRoot/CrystalPanel
-@onready var crystal_count_label: Label = $HUDRoot/CrystalPanel/CrystalCount
 @onready var detection_panel: Panel = $HUDRoot/DetectionPanel
 @onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
 @onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
@@ -50,7 +48,6 @@ func _ready() -> void:
 	_detection_fill_style = _make_panel_style(Color("48b85b"), Color("48b85b"), 0)
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
-	crystal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.12, 0.25, 0.94), Color(0.38, 0.82, 1.0, 1.0), 2))
 	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
 	reload_button.pressed.connect(_on_reload_pressed)
@@ -62,7 +59,6 @@ func _ready() -> void:
 	reload_button.add_theme_color_override("font_disabled_color", Color("8a9096"))
 	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
-	crystal_panel.visible = false
 	var pulse_style: StyleBoxFlat = _make_panel_style(Color("12354d"), Color("081522"), 3)
 	pulse_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
 	pulse_style.shadow_size = 3
@@ -98,10 +94,6 @@ func _process(_delta: float) -> void:
 		match_zone_label.text = str(game.call("get_zone_text"))
 		match_zone_label.visible = not match_zone_label.text.is_empty()
 		match_panel.modulate = Color(1.0, 0.55, 0.45) if match_mode_label.text.begins_with("ПОРАЖЕНИЕ") else Color.WHITE
-	var capture_mode: bool = game != null and game.has_method("is_crystal_capture_mode") and game.is_crystal_capture_mode()
-	crystal_panel.visible = capture_mode
-	if capture_mode and is_instance_valid(player):
-		crystal_count_label.text = "%02d" % player.crystals
 	if not is_instance_valid(player):
 		return
 	_bind_player_if_needed()
@@ -114,14 +106,10 @@ func _process(_delta: float) -> void:
 		return
 	var weapon_id: String = str(weapon.get("id", ""))
 	weapon_label.text = str(weapon.get("name", weapon_id))
-	if weapon_id == "crystal_blade":
-		ammo_label.text = "Атака: ближний бой"
-		reload_button.disabled = true
-	else:
-		var loaded: int = int(player.magazine.get(weapon_id, 0))
-		var reserve: int = int(player.ammo_reserve.get(weapon_id, 0))
-		ammo_label.text = "Магазин: %d / Запас: %d" % [loaded, reserve]
-		reload_button.disabled = loaded >= int(weapon.get("magazine_size", 0)) or reserve <= 0
+	var loaded: int = int(player.magazine.get(weapon_id, 0))
+	var reserve: int = int(player.ammo_reserve.get(weapon_id, 0))
+	ammo_label.text = "Магазин: %d / Запас: %d" % [loaded, reserve]
+	reload_button.disabled = loaded >= int(weapon.get("magazine_size", 0)) or reserve <= 0
 
 
 func _update_portal_hint(game: Node) -> void:
