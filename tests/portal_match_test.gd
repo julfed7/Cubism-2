@@ -62,7 +62,7 @@ func _run() -> void:
 	_check(not pair.is_open and player.global_position == a, "Match opened portals before schedule")
 	arena.advance_portals(0.1)
 	_check(pair.is_open and player.global_position == b, "Match failed to teleport at opening")
-	_check(player.lumi_dash_revision == 1, "Transfer did not advance movement revision")
+	_check(player.movement_revision == 1, "Transfer did not advance movement revision")
 	_check(not player.accepts_client_movement(0) and player.accepts_client_movement(1), "Old movement can undo transfer")
 	_check(player.network_position_q == Vector2i(NetworkManager.quantize(b.x), NetworkManager.quantize(b.y)), "Network position missed transfer")
 	_check(arena.can_respawn(1), "Classic respawn changed")
@@ -76,7 +76,7 @@ func _run() -> void:
 	arena.advance_portals(0.0)
 	player.global_position = a
 	arena.advance_portals(0.0)
-	_check(player.global_position == b and player.lumi_dash_revision == 2, "Royale transfer failed")
+	_check(player.global_position == b and player.movement_revision == 2, "Royale transfer failed")
 
 	arena.match_finished = true
 	var stopped_elapsed: float = pair._elapsed
@@ -96,37 +96,37 @@ func _run() -> void:
 	player.global_position = a
 	player.knockback_velocity = Vector2(10, 20)
 	var effect_count: int = pair.get_child_count()
-	arena.sync_portal_transfer(pair_id, 1, a, b, 3, false)
+	arena.sync_portal_transfer(pair_id, 1, a, b, 3)
 	_check(player.global_position == b and player.trajectory_pos == b and player.knockback_velocity == Vector2.ZERO, "Client transfer retained old movement")
-	arena.sync_portal_transfer(pair_id, 1, a, b, 3, false)
+	arena.sync_portal_transfer(pair_id, 1, a, b, 3)
 	_check(pair.get_child_count() == effect_count + 1, "Reliable transfer played duplicate effects")
-	arena._apply_snapshot({"players": {"1": {"x": a.x, "y": a.y, "dash_revision": 2}}})
+	arena._apply_snapshot({"players": {"1": {"x": a.x, "y": a.y, "movement_revision": 2}}})
 	_check(player.global_position == b, "Stale snapshot undid transfer")
 	# Simulate the snapshot arriving before its reliable effect.
-	arena._apply_snapshot({"players": {"1": {"x": a.x, "y": a.y, "dash_revision": 4}}})
+	arena._apply_snapshot({"players": {"1": {"x": a.x, "y": a.y, "movement_revision": 4}}})
 	player.global_position = a + Vector2(10, 0)
-	arena.sync_portal_transfer(pair_id, 1, b, a, 4, false)
+	arena.sync_portal_transfer(pair_id, 1, b, a, 4)
 	_check(player.global_position == a + Vector2(10, 0), "Late effect rewound newer movement")
 
 	# An event may precede its player's MultiplayerSpawner replication.
 	player.peer_id = "2"
-	arena.sync_portal_transfer(pair_id, 1, a, b, 5, false)
+	arena.sync_portal_transfer(pair_id, 1, a, b, 5)
 	_check(arena._pending_portal_transfers.has(1), "Transfer before spawn was lost")
 	player.peer_id = "1"
 	arena._apply_pending_portal_transfer(player)
-	_check(player.global_position == b and player.lumi_dash_revision == 5, "Pending transfer was not applied")
+	_check(player.global_position == b and player.movement_revision == 5, "Pending transfer was not applied")
 	_check(arena._pending_portal_transfers.is_empty(), "Pending transfer was not cleared")
 
 	NetworkManager.clear_snapshots()
-	NetworkManager.push_snapshot({"players": {"1": {"x": a.x, "y": a.y, "dash_revision": 3}}})
-	NetworkManager.push_snapshot({"players": {"1": {"x": b.x, "y": b.y, "dash_revision": 4}}})
+	NetworkManager.push_snapshot({"players": {"1": {"x": a.x, "y": a.y, "movement_revision": 3}}})
+	NetworkManager.push_snapshot({"players": {"1": {"x": b.x, "y": b.y, "movement_revision": 4}}})
 	_check(NetworkManager.get_trajectory_for("1", false)["vel"] == Vector2.ZERO, "Trajectory extrapolated across portal gap")
-	NetworkManager.push_snapshot({"players": {"1": {"x": b.x + 5, "y": b.y, "dash_revision": 4}}})
+	NetworkManager.push_snapshot({"players": {"1": {"x": b.x + 5, "y": b.y, "movement_revision": 4}}})
 	_check(NetworkManager.get_trajectory_for("1", false)["vel"] == Vector2(5, 0), "Normal movement lost interpolation")
 
 	NetworkManager.game_mode = "crystal_capture"
 	player.global_position = b
-	arena.sync_portal_transfer(pair_id, 1, b, a, 6, false)
+	arena.sync_portal_transfer(pair_id, 1, b, a, 6)
 	_check(player.global_position == b, "Crystal mode accepted transfer RPC")
 	NetworkManager.set_mode(NetworkManager.Mode.SINGLE)
 	arena._configure_portals()

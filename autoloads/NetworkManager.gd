@@ -165,9 +165,9 @@ func get_trajectory_for(id: String, is_zombie: bool) -> Dictionary:
 		return {}
 	var pos: Vector2 = Vector2(float(last_data.get("x", 0.0)), float(last_data.get("y", 0.0)))
 	var vel: Vector2 = Vector2.ZERO
-	# Teleports and dashes start a new movement epoch, never a long trajectory.
+	# Teleports start a new movement epoch, never a long trajectory.
 	var same_movement: bool = is_zombie or (
-		int(last_data.get("dash_revision", 0)) == int(prev_data.get("dash_revision", 0))
+		int(last_data.get("movement_revision", 0)) == int(prev_data.get("movement_revision", 0))
 	)
 	if not prev_data.is_empty() and same_movement:
 		vel = Vector2(
@@ -549,12 +549,12 @@ func dequantize(value: int) -> float:
 	return float(value) / 100.0
 
 
-func send_move(quantized_x: int, quantized_y: int, dash_revision: int = 0) -> void:
+func send_move(quantized_x: int, quantized_y: int, movement_revision: int = 0) -> void:
 	if not is_client:
 		return
 	var game: Node = get_tree().current_scene
 	if game != null:
-		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y), dash_revision)
+		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y), movement_revision)
 
 
 func send_shoot(direction: Vector2) -> void:

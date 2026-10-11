@@ -117,18 +117,16 @@ func sync_portal_states(states: Dictionary) -> void:
 
 
 func _on_portal_player_teleported(player: GamePlayer, departure: Vector2, arrival: Vector2, pair_id: String) -> void:
-	# Reuse the movement epoch already checked by request_move and dash snapshots.
-	# Packets sent before this transfer can no longer move the server player back.
-	player.lumi_dash_revision += 1
+	# Advance the movement epoch so old client packets cannot undo a portal transfer.
+	player.movement_revision += 1
 	if NetworkManager.is_host:
-		sync_portal_transfer.rpc(pair_id, int(player.peer_id), departure, arrival,
-			player.lumi_dash_revision, player.lumi_dash_active)
+		sync_portal_transfer.rpc(pair_id, int(player.peer_id), departure, arrival, player.movement_revision)
 
 
 @rpc("authority", "call_remote", "reliable")
 func sync_portal_transfer(
 	pair_id: String, player_id: int, departure: Vector2, arrival: Vector2,
-	revision: int, dash_active: bool
+	revision: int
 ) -> void:
 	if not NetworkManager.is_client or not _portals_allowed():
 		return
@@ -140,7 +138,7 @@ func sync_portal_transfer(
 		return
 	_portal_effect_revisions[effect_key] = revision
 	pair.play_transfer_effect(departure, arrival)
-	var transfer: Dictionary = {"position": arrival, "revision": revision, "dash_active": dash_active}
+	var transfer: Dictionary = {"position": arrival, "revision": revision}
 	var player: GamePlayer = _find_player(player_id)
 	if player == null:
 		_pending_portal_transfers[player_id] = transfer
@@ -150,11 +148,11 @@ func sync_portal_transfer(
 
 func _apply_portal_position(player: GamePlayer, transfer: Dictionary) -> void:
 	var revision: int = int(transfer["revision"])
-	# A snapshot or newer dash may already have applied this movement epoch.
-	if revision <= player.lumi_dash_revision:
+	# A newer position snapshot may already have applied this movement epoch.
+	if revision <= player.movement_revision:
 		return
 	var arrival: Vector2 = transfer["position"]
-	player.apply_lumi_dash_snapshot(revision, bool(transfer["dash_active"]), arrival)
+	player.apply_movement_snapshot(revision, arrival)
 	player.knockback_velocity = Vector2.ZERO
 	player.network_position_q = Vector2i(NetworkManager.quantize(arrival.x), NetworkManager.quantize(arrival.y))
 
@@ -335,10 +333,7 @@ func _broadcast_snapshot() -> void:
 			"rot": player.rotation,
 			"hp": player.hp,
 			"crystals": player.crystals,
-			"super_charge": player.super_charge,
-			"super_ready": player.super_ready,
-			"dash_revision": player.lumi_dash_revision,
-			"dash_active": player.lumi_dash_active,
+			"movement_revision": player.movement_revision,
 		}
 	for node: Node in get_tree().get_nodes_in_group("enemy"):
 		if not node is GameZombie:
@@ -398,17 +393,15 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 			continue
 		var player_state: Dictionary = players_state.get(raw_id, {}) as Dictionary
 		var server_position: Vector2 = Vector2(float(player_state.get("x", 0.0)), float(player_state.get("y", 0.0)))
-		var dash_revision: int = int(player_state.get("dash_revision", 0))
-		if dash_revision < player.lumi_dash_revision:
+		var movement_revision: int = int(player_state.get("movement_revision", 0))
+		if movement_revision < player.movement_revision:
 			continue
-		var movement_changed: bool = dash_revision > player.lumi_dash_revision
-		var dash_position_applied: bool = player.apply_lumi_dash_snapshot(
-			dash_revision, bool(player_state.get("dash_active", false)), server_position
-		)
+		var movement_changed: bool = movement_revision > player.movement_revision
+		var movement_applied: bool = player.apply_movement_snapshot(movement_revision, server_position)
 		if movement_changed:
 			player.knockback_velocity = Vector2.ZERO
 			player.network_position_q = Vector2i(NetworkManager.quantize(server_position.x), NetworkManager.quantize(server_position.y))
-		if not dash_position_applied:
+		if not movement_applied:
 			if player_id == multiplayer.get_unique_id():
 				if player.global_position.distance_to(server_position) > 50.0:
 					player.global_position = server_position
@@ -419,8 +412,6 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 					var trajectory_velocity: Vector2 = Vector2(trajectory.get("vel", Vector2.ZERO))
 					player.set_trajectory(trajectory_position, trajectory_velocity)
 		player.hp = float(player_state.get("hp", player.hp))
-		player.super_charge = clampf(float(player_state.get("super_charge", player.super_charge)), 0.0, 100.0)
-		player.super_ready = bool(player_state.get("super_ready", player.super_ready)) or player.super_charge >= 100.0
 		player.crystals = int(player_state.get("crystals", player.crystals))
 
 	var zombies_state: Dictionary = snapshot.get("zombies", {}) as Dictionary
@@ -582,9 +573,6 @@ func _spawn_player(data: Variant) -> Node:
 	var player := PLAYER_SCENE.instantiate() as GamePlayer
 	player.name = "Player_%d" % player_id
 	player.peer_id = str(player_id)
-	var brawler_ids: Array[String] = BrawlerDB.get_ids()
-	var spawn_brawler: String = GameState.selected_brawler if (NetworkManager.is_single or player_id == multiplayer.get_unique_id()) else brawler_ids[posmod(player_id, brawler_ids.size())]
-	player.brawler_id = spawn_brawler
 	player.set_multiplayer_authority(player_id, true)
 	var state_sync: MultiplayerSynchronizer = player.get_node_or_null("StateSynchronizer") as MultiplayerSynchronizer
 	if state_sync != null:
@@ -653,8 +641,7 @@ func client_game_ready() -> void:
 			sync_player_snapshot.rpc_id(client_id, {
 				"peer_id": int(player.peer_id),
 				"position": player.global_position,
-				"revision": player.lumi_dash_revision,
-				"dash_active": player.lumi_dash_active
+				"revision": player.movement_revision,
 			})
 		elif node is GameChest:
 			var chest := node as GameChest
@@ -705,11 +692,11 @@ func sync_pickup_snapshot(data: Dictionary) -> void:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func request_move(position_q: Vector2i, dash_revision: int = 0) -> void:
+func request_move(position_q: Vector2i, movement_revision: int = 0) -> void:
 	if not NetworkManager.is_host:
 		return
 	var player: GamePlayer = _find_player(multiplayer.get_remote_sender_id())
-	if player != null and player.accepts_client_movement(dash_revision):
+	if player != null and player.accepts_client_movement(movement_revision):
 		player.global_position = Vector2(
 			NetworkManager.dequantize(position_q.x),
 			NetworkManager.dequantize(position_q.y)
@@ -837,55 +824,12 @@ func perform_melee(attacker_id: int, direction: Vector2, damage: float = 15.0) -
 		if offset.normalized().dot(facing) < cos(deg_to_rad(45.0)):
 			continue
 		if target.has_method("take_damage"):
-			var before: float = _combat_target_health(target)
 			if target is GamePlayer:
 				(target as GamePlayer).take_contact_damage(damage, attacker.global_position, 400.0)
 			else:
 				target.call("take_damage", damage, attacker.global_position, 400.0)
-			attacker.register_damage_dealt(maxf(0.0, before - _combat_target_health(target)))
 
 
-func _combat_target_health(target: Object) -> float:
-	if target is GamePlayer:
-		return (target as GamePlayer).hp
-	if target is GameZombie:
-		return (target as GameZombie).hp
-	return -1.0
-
-
-func execute_super(player: GamePlayer) -> void:
-	if player == null or player._dead or (not NetworkManager.is_single and not NetworkManager.is_host):
-		return
-	var direction: Vector2 = player._get_aim_direction()
-	match player.brawler_id:
-		"shelly":
-			for target: Node in _get_super_targets(player):
-				if target.global_position.distance_to(player.global_position) <= 190.0 and absf(direction.angle_to((target.global_position - player.global_position).normalized())) <= deg_to_rad(70.0):
-					target.call("take_damage", 55.0, player.global_position, 550.0)
-		"colt":
-			var weapon: Dictionary = player.get_current_weapon_data()
-			if weapon.is_empty():
-				weapon = ItemDB.get_item("pistol")
-			weapon["damage"] = float(weapon.get("damage", 20.0)) * 1.6
-			weapon["bullet_speed"] = float(weapon.get("bullet_speed", 700.0)) * 1.25
-			for spread: float in [-8.0, -5.0, -2.5, 0.0, 2.5, 5.0, 8.0]:
-				_spawn_projectile(player.get_multiplayer_authority(), player.get_muzzle_position(direction), direction.rotated(deg_to_rad(spread)), weapon)
-		"spike":
-			player.heal(40.0)
-			for target: Node in _get_super_targets(player):
-				if target.global_position.distance_to(player.global_position) <= 210.0:
-					target.call("take_damage", 38.0, player.global_position, 120.0)
-	UISoundManager.play_ui_sound("hit.wav")
-
-func _get_super_targets(player: GamePlayer) -> Array[Node2D]:
-	var targets: Array[Node2D] = []
-	for node: Node in get_tree().get_nodes_in_group("enemy"):
-		if node is Node2D and node.has_method("take_damage") and not (node is GameZombie and (node as GameZombie).dead):
-			targets.append(node as Node2D)
-	for node: Node in get_tree().get_nodes_in_group("player"):
-		if node != player and node is GamePlayer and (node as GamePlayer).visible and not (node as GamePlayer)._dead:
-			targets.append(node as Node2D)
-	return targets
 
 func _on_player_died(player_id: int) -> void:
 	if not NetworkManager.is_single and not NetworkManager.is_host:
@@ -1174,16 +1118,6 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 	if not NetworkManager.is_single and not NetworkManager.is_host:
 		return
 	match str(action.get("type", "")):
-		"super":
-			var super_player: GamePlayer = _find_player(player_id)
-			if super_player == null or not super_player.visible:
-				return
-			var raw_direction: Variant = action.get("direction")
-			if not raw_direction is Array or (raw_direction as Array).size() != 2:
-				return
-			if not (raw_direction[0] is float or raw_direction[0] is int) or not (raw_direction[1] is float or raw_direction[1] is int):
-				return
-			super_player.activate_super(Vector2(float(raw_direction[0]), float(raw_direction[1])))
 		"pickup":
 			collect_pickup_authoritative(str(action.get("entity_id", "")), player_id)
 		"open_chest":
@@ -1249,12 +1183,10 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 			if absf(direction.angle_to(offset)) > deg_to_rad(60.0):
 				return
 			var damage: float = 26.0 if is_crystal_blade else (15.0 if attacker.current_weapon.is_empty() else 10.0)
-			var before: float = _combat_target_health(target)
 			if target is GamePlayer:
 				(target as GamePlayer).take_contact_damage(damage, attacker.global_position, 400.0)
 			else:
 				target.call("take_damage", damage, attacker.global_position, 400.0)
-			attacker.register_damage_dealt(maxf(0.0, before - _combat_target_health(target)))
 
 
 @rpc("authority", "call_remote", "reliable")

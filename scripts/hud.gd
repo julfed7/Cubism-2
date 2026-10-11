@@ -14,11 +14,6 @@ class_name GameHUD
 @onready var detection_panel: Panel = $HUDRoot/DetectionPanel
 @onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
 @onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
-@onready var brawler_panel: Panel = $HUDRoot/BrawlerPanel
-@onready var brawler_label: Label = $HUDRoot/BrawlerPanel/BrawlerLabel
-@onready var super_label: Label = $HUDRoot/BrawlerPanel/SuperLabel
-@onready var super_fill: Panel = $HUDRoot/BrawlerPanel/SuperBackground/SuperFill
-@onready var super_button: Button = $HUDRoot/SuperButton
 @onready var reload_button: Button = $HUDRoot/ReloadButton
 @onready var match_panel: Panel = $HUDRoot/MatchPanel
 @onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
@@ -53,14 +48,11 @@ func _ready() -> void:
 	_health_bg_style = _make_panel_style(Color(0.18, 0.18, 0.18, 1.0), Color(0.08, 0.08, 0.08, 1.0), 1)
 	_health_fill_style = _make_panel_style(Color(0.8, 0.2, 0.2, 1.0), Color(0.8, 0.2, 0.2, 1.0), 0)
 	_detection_fill_style = _make_panel_style(Color("48b85b"), Color("48b85b"), 0)
-	var super_fill_style: StyleBoxFlat = _make_panel_style(Color("e7b83e"), Color("ffe37a"), 0)
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
 	crystal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.12, 0.25, 0.94), Color(0.38, 0.82, 1.0, 1.0), 2))
 	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
 	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
-	brawler_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.12, 0.08, 0.16, 0.94), Color(0.66, 0.38, 0.92, 1.0), 2))
-	super_button.pressed.connect(_on_super_pressed)
 	reload_button.pressed.connect(_on_reload_pressed)
 	reload_button.add_theme_stylebox_override("normal", _make_panel_style(Color("263d4f"), Color("4f91b8"), 5))
 	reload_button.add_theme_stylebox_override("hover", _make_panel_style(Color("31566e"), Color("70c4ec"), 5))
@@ -68,13 +60,6 @@ func _ready() -> void:
 	reload_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("25282d"), Color("3c4249"), 4))
 	reload_button.add_theme_color_override("font_color", Color("d9f3ff"))
 	reload_button.add_theme_color_override("font_disabled_color", Color("8a9096"))
-	super_button.add_theme_stylebox_override("normal", _make_panel_style(Color("66501a"), Color("30200b"), 5))
-	super_button.add_theme_stylebox_override("hover", _make_panel_style(Color("947326"), Color("30200b"), 5))
-	super_button.add_theme_stylebox_override("pressed", _make_panel_style(Color("42320f"), Color("30200b"), 5))
-	super_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("35343a"), Color("17171b"), 4))
-	super_button.add_theme_color_override("font_color", Color("fff3b0"))
-	super_button.add_theme_color_override("font_disabled_color", Color("a8a5a0"))
-	super_fill.add_theme_stylebox_override("panel", super_fill_style)
 	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
 	crystal_panel.visible = false
@@ -119,7 +104,6 @@ func _process(_delta: float) -> void:
 		crystal_count_label.text = "%02d" % player.crystals
 	if not is_instance_valid(player):
 		return
-	_brawler_hud_update()
 	_bind_player_if_needed()
 	_update_detection_indicator()
 	var weapon: Dictionary = player.current_weapon
@@ -222,24 +206,6 @@ func _clear_pulse_markers() -> void:
 	_pulse_viewer = null
 	pulse_panel.hide()
 
-
-func _brawler_hud_update() -> void:
-	if not is_instance_valid(player):
-		return
-	brawler_label.text = "БОЕЦ: %s" % str(player.brawler_data.get("name", player.brawler_id))
-	var has_lumi_super: bool = player.brawler_id == "lumi"
-	super_label.visible = has_lumi_super
-	(super_fill.get_parent() as Control).visible = has_lumi_super
-	super_button.visible = has_lumi_super
-	if not has_lumi_super:
-		return
-	var charge: float = clampf(player.super_charge / 100.0, 0.0, 1.0)
-	var ready: bool = player.super_ready and charge >= 1.0 and not player.lumi_dash_active
-	super_label.text = "КРИСТАЛЬНЫЙ РЫВОК  %d%%" % roundi(charge * 100.0)
-	super_fill.offset_right = 176.0 * charge
-	super_button.disabled = not ready
-	super_button.text = "⚡\nРЫВОК ГОТОВ" if ready else "⚡\nРЫВОК"
-	super_button.modulate = Color.WHITE
 
 func update_ammo(ammo: int, reserve: int) -> void:
 	if is_instance_valid(ammo_label):
@@ -381,11 +347,6 @@ func _make_panel_style(background: Color, border: Color, border_width: int) -> S
 func _on_exit_button_pressed() -> void:
 	get_node("/root/NetworkManager").leave_game()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
-
-func _on_super_pressed() -> void:
-	if is_instance_valid(player):
-		player.request_super()
-
 
 func _on_reload_pressed() -> void:
 	if is_instance_valid(player):
