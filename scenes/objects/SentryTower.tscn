@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/sentry_tower.gd" id="1_tower"]
+[ext_resource type="Texture2D" path="res://sprites/items/sentry_tower.svg" id="2_texture"]
+
+[node name="SentryTower" type="Node2D"]
+texture_filter = 1
+script = ExtResource("1_tower")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_texture")
+texture_filter = 1

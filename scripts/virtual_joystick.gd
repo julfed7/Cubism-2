@@ -12,14 +12,21 @@ class_name ScreenJoystick
 
 signal value_changed(direction: Vector2)
 
+signal aim_position_changed(screen_position: Vector2)
+
 var value: Vector2 = Vector2.ZERO
 var _touch_index: int = -1
-var _mouse_pressed: bool = false
+var _aim_touch_index: int = -1
 var _base_position: Vector2
 
 
 func _ready() -> void:
 	add_to_group("virtual_joystick")
+	var mobile_platform: bool = OS.has_feature("mobile") or OS.get_name() in ["Android", "iOS"]
+	visible = mobile_platform
+	if not mobile_platform:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return
 	# Pass touches outside the movement zone to the player's touch-aim handler.
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	_base_position = _zone_rect().get_center()
@@ -40,6 +47,8 @@ func _draw() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if not (OS.has_feature("mobile") or OS.get_name() in ["Android", "iOS"]):
+		return
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		var local_position := _to_local_position(touch.position)
@@ -47,34 +56,26 @@ func _gui_input(event: InputEvent) -> void:
 			_touch_index = touch.index
 			_begin_at_position(local_position)
 			accept_event()
+		elif touch.pressed and _aim_touch_index == -1 and _is_aim_position_allowed(touch.position):
+			_aim_touch_index = touch.index
+			_emit_aim_position(touch.position)
 		elif not touch.pressed and touch.index == _touch_index:
 			_touch_index = -1
 			_reset_value()
 			accept_event()
+		elif not touch.pressed and touch.index == _aim_touch_index:
+			_aim_touch_index = -1
 	elif event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
 		if drag.index == _touch_index:
 			_set_value_from_position(_to_local_position(drag.position))
 			accept_event()
-	elif event is InputEventMouseButton:
-		var mouse_button := event as InputEventMouseButton
-		if mouse_button.button_index == MOUSE_BUTTON_LEFT:
-			var local_position := _to_local_position(mouse_button.position)
-			if mouse_button.pressed and is_position_in_zone(mouse_button.position):
-				_mouse_pressed = true
-				_begin_at_position(local_position)
-				accept_event()
-			elif not mouse_button.pressed and _mouse_pressed:
-				_mouse_pressed = false
-				_reset_value()
-				accept_event()
-	elif event is InputEventMouseMotion and _mouse_pressed:
-		_set_value_from_position(_to_local_position((event as InputEventMouseMotion).position))
-		accept_event()
+		elif drag.index == _aim_touch_index and _is_aim_position_allowed(drag.position):
+			_emit_aim_position(drag.position)
 
 
 func is_input_active() -> bool:
-	return _touch_index != -1 or _mouse_pressed
+	return _touch_index != -1
 
 
 func is_position_in_zone(p_position: Vector2) -> bool:
@@ -83,6 +84,30 @@ func is_position_in_zone(p_position: Vector2) -> bool:
 
 func get_touch_index() -> int:
 	return _touch_index
+
+
+func _emit_aim_position(screen_position: Vector2) -> void:
+	# The movement finger and touches over HUD buttons never update aim.
+	aim_position_changed.emit(screen_position)
+
+
+func _is_aim_position_allowed(screen_position: Vector2) -> bool:
+	var local_position: Vector2 = _to_local_position(screen_position)
+	if local_position.x < size.x * 0.42 or is_position_in_zone(screen_position):
+		return false
+	var root: Node = get_parent()
+	if root == null:
+		return true
+	for child: Node in root.get_children():
+		if child == self or not child is Control:
+			continue
+		var control: Control = child as Control
+		if not control.is_visible_in_tree() or control.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+			continue
+		var point_in_control: Vector2 = control.get_global_transform_with_canvas().affine_inverse() * screen_position
+		if Rect2(Vector2.ZERO, control.size).has_point(point_in_control):
+			return false
+	return true
 
 
 func _begin_at_position(p_position: Vector2) -> void:

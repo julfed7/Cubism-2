@@ -1,6 +1,11 @@
 extends Node
 
 const POOL_SIZE: int = 8
+const SOUND_FALLBACKS: Dictionary = {
+	# Placeholder until a final bespoke lure SFX is delivered. Keeping this
+	# mapping here makes the gameplay event stable and avoids missing-file noise.
+	"noise_lure_activate.wav": "pickup.wav",
+}
 var _players: Array[AudioStreamPlayer] = []
 var _cache: Dictionary = {}
 
@@ -19,8 +24,14 @@ func play_ui_sound(sound_name: String) -> void:
 	if not ResourceLoader.exists(path):
 		path = "res://sounds/%s" % sound_name
 	if not ResourceLoader.exists(path):
-		push_warning("UI sound not found: " + sound_name)
-		return
+		var fallback_name: String = str(SOUND_FALLBACKS.get(sound_name, ""))
+		if fallback_name.is_empty():
+			push_warning("UI sound not found: " + sound_name)
+			return
+		path = "res://sounds/%s" % fallback_name
+		if not ResourceLoader.exists(path):
+			push_warning("UI sound fallback not found: " + fallback_name)
+			return
 	if not _cache.has(path):
 		_cache[path] = load(path) as AudioStream
 	var player: AudioStreamPlayer = _get_available_player()

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/pulse_beacon.gd" id="1_beacon"]
+
+[node name="PulseBeacon" type="Node2D"]
+script = ExtResource("1_beacon")

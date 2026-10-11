@@ -145,10 +145,9 @@ func _send_mm(message: Dictionary) -> void:
 func push_snapshot(snapshot: Dictionary) -> void:
 	if snapshot.is_empty():
 		return
-	var snapshot_copy: Dictionary = snapshot.duplicate(true)
 	_prev_snapshot = _last_snapshot
-	_last_snapshot = snapshot_copy
-	_snapshot_buffer.append(snapshot_copy)
+	_last_snapshot = snapshot
+	_snapshot_buffer.append(snapshot)
 	while _snapshot_buffer.size() > SNAPSHOT_BUFFER_MAX:
 		_snapshot_buffer.pop_front()
 
@@ -165,7 +164,11 @@ func get_trajectory_for(id: String, is_zombie: bool) -> Dictionary:
 		return {}
 	var pos: Vector2 = Vector2(float(last_data.get("x", 0.0)), float(last_data.get("y", 0.0)))
 	var vel: Vector2 = Vector2.ZERO
-	if not prev_data.is_empty():
+	# Teleports start a new movement epoch, never a long trajectory.
+	var same_movement: bool = is_zombie or (
+		int(last_data.get("movement_revision", 0)) == int(prev_data.get("movement_revision", 0))
+	)
+	if not prev_data.is_empty() and same_movement:
 		vel = Vector2(
 			float(last_data.get("x", 0.0)) - float(prev_data.get("x", 0.0)),
 			float(last_data.get("y", 0.0)) - float(prev_data.get("y", 0.0))
@@ -541,12 +544,12 @@ func dequantize(value: int) -> float:
 	return float(value) / 100.0
 
 
-func send_move(quantized_x: int, quantized_y: int) -> void:
+func send_move(quantized_x: int, quantized_y: int, movement_revision: int = 0) -> void:
 	if not is_client:
 		return
 	var game: Node = get_tree().current_scene
 	if game != null:
-		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y))
+		game.rpc_id(1, "request_move", Vector2i(quantized_x, quantized_y), movement_revision)
 
 
 func send_shoot(direction: Vector2) -> void:
@@ -614,10 +617,14 @@ func reset_state() -> void:
 	set_mode(Mode.SINGLE)
 	clear_snapshots()
 	my_id = 1
+	GameState.current_mode = "battle_royale"
 	my_match_id = ""
 	room_id = ""
 	room_players = {}
 	game_started = false
+	game_mode = "battle_royale"
+	map_name = "Island"
+	map_path = "res://scenes/maps/Island.tscn"
 	_pending_action = ""
 	_reconnect_attempted = false
 	_match_emitted = false
@@ -643,3 +650,34 @@ func _fail(message: String) -> void:
 	network_error.emit(message)
 	connection_failed.emit()
 	UISoundManager.play_ui_sound("error.wav")
+
+
+# Offline matches use the same player identity as a local host.
+func get_local_player_id() -> int:
+	if multiplayer.multiplayer_peer == null:
+		return 1
+	return multiplayer.get_unique_id()
+
+
+## Средний RTT ENet в миллисекундах. На хосте возвращает худший RTT среди клиентов.
+## -1 означает, что сетевой RTT сейчас недоступен.
+func get_debug_ping_ms() -> int:
+	if is_single or _enet_peer == null or multiplayer.multiplayer_peer == null:
+		return -1
+	if is_client:
+		return _get_peer_rtt_ms(1)
+	if is_host:
+		var worst_rtt: int = -1
+		for peer_id: int in multiplayer.get_peers():
+			worst_rtt = maxi(worst_rtt, _get_peer_rtt_ms(peer_id))
+		return worst_rtt
+	return -1
+
+
+func _get_peer_rtt_ms(peer_id: int) -> int:
+	if _enet_peer == null:
+		return -1
+	var packet_peer: ENetPacketPeer = _enet_peer.get_peer(peer_id)
+	if packet_peer == null:
+		return -1
+	return roundi(float(packet_peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)))

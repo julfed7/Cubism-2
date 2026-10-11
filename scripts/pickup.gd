@@ -19,6 +19,7 @@ var throw_velocity: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
+	add_to_group("pickup")
 	if pickup_id.is_empty():
 		pickup_id = str(name)
 	body_entered.connect(_on_body_entered)
@@ -68,7 +69,7 @@ func _on_body_entered(body: Node2D) -> void:
 	if not player.is_local:
 		return
 	if NetworkManager.is_single:
-		if player.inventory.add_item(item_id, amount):
+		if player.collect_item(item_id, amount):
 			play_collected()
 		return
 	if NetworkManager.is_host:

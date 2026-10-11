@@ -2,6 +2,8 @@ extends CharacterBody2D
 class_name GameZombie
 
 const SNAPSHOT_INTERVAL: float = 0.033
+const NAV_TARGET_REFRESH_INTERVAL: float = 0.15
+const PLAYER_TARGET_REFRESH_INTERVAL: float = 0.2
 
 @export var speed: float = 55.0
 @export var attack_range: float = 80.0
@@ -27,9 +29,15 @@ var facing_left: bool = false
 var dead: bool = false
 var _can_attack: bool = true
 var knockback_velocity: Vector2 = Vector2.ZERO
+var _resin_slows: Dictionary = {}
 var _hurt_flash_timer: float = 0.0
 var _invuln_timer: float = 0.0
 var _last_network_health: float = 30.0
+var _noise_lures: Dictionary = {}
+var _ai_moving: bool = false
+var _nav_target_refresh_timer: float = 0.0
+var _player_target_refresh_timer: float = 0.0
+var _current_target: GamePlayer
 
 
 func _ready() -> void:
@@ -52,10 +60,13 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_ai_moving = false
 	if dead:
 		return
 	if NetworkManager.is_client:
 		return
+	_nav_target_refresh_timer = maxf(0.0, _nav_target_refresh_timer - delta)
+	_player_target_refresh_timer = maxf(0.0, _player_target_refresh_timer - delta)
 	_process_hurt(delta)
 	if knockback_velocity.length_squared() > 1.0:
 		velocity = knockback_velocity
@@ -70,7 +81,7 @@ func _process(delta: float) -> void:
 		return
 	if NetworkManager.is_client:
 		_process_hurt(delta)
-	if is_multiplayer_authority():
+	if not NetworkManager.is_client:
 		return
 	if not has_trajectory:
 		_apply_network_state()
@@ -86,6 +97,21 @@ func _process(delta: float) -> void:
 	_update_animation(old_position.distance_squared_to(global_position) > 0.05)
 
 
+func add_resin_slow(source_id: int, multiplier: float) -> void:
+	_resin_slows[source_id] = clampf(multiplier, 0.1, 1.0)
+
+
+func remove_resin_slow(source_id: int) -> void:
+	_resin_slows.erase(source_id)
+
+
+func _resin_speed_multiplier() -> float:
+	var multiplier: float = 1.0
+	for value: Variant in _resin_slows.values():
+		multiplier = minf(multiplier, float(value))
+	return multiplier
+
+
 func set_trajectory(pos: Vector2, vel: Vector2) -> void:
 	trajectory_pos = pos
 	trajectory_vel = vel
@@ -93,7 +119,18 @@ func set_trajectory(pos: Vector2, vel: Vector2) -> void:
 
 
 func _process_authoritative_ai() -> void:
-	var target: GamePlayer = _find_nearest_alive_player()
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	var lure: NoiseLure = _find_noise_lure()
+	if lure != null:
+		# Stop attacking players while distracted, but retain the attack cooldown.
+		is_attacking = false
+		_move_toward_position(lure.global_position, 12.0)
+		return
+	if _player_target_refresh_timer <= 0.0 or not _is_current_target_valid():
+		_current_target = _find_nearest_alive_player()
+		_player_target_refresh_timer = PLAYER_TARGET_REFRESH_INTERVAL
+	var target: GamePlayer = _current_target
 	if target == null:
 		velocity = Vector2.ZERO
 		_update_animation(false)
@@ -105,18 +142,64 @@ func _process_authoritative_ai() -> void:
 			_attack(target)
 		_update_animation(false)
 		return
-	navigation_agent.target_position = target.global_position
+	_move_toward_position(target.global_position, attack_range * 0.75)
+
+
+func hear_noise_lure(lure: NoiseLure) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if dead or hp <= 0.0 or not is_instance_valid(lure) or not lure.can_attract(global_position):
+		return
+	_noise_lures[lure.get_instance_id()] = weakref(lure)
+
+
+func forget_noise_lure(source_id: int) -> void:
+	_noise_lures.erase(source_id)
+
+
+func _find_noise_lure() -> NoiseLure:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return null
+	var nearest: NoiseLure = null
+	var nearest_distance: float = INF
+	for source_id: int in _noise_lures.keys():
+		var reference: WeakRef = _noise_lures[source_id]
+		var lure: NoiseLure = reference.get_ref() as NoiseLure
+		if not is_instance_valid(lure) or not lure.can_attract(global_position):
+			_noise_lures.erase(source_id)
+			continue
+		var distance: float = global_position.distance_squared_to(lure.global_position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = lure
+	return nearest
+
+
+func _move_toward_position(at: Vector2, stopping_distance: float) -> void:
+	var offset: Vector2 = at - global_position
+	if not is_equal_approx(navigation_agent.target_desired_distance, stopping_distance):
+		navigation_agent.target_desired_distance = stopping_distance
+	var target_changed: bool = navigation_agent.target_position.distance_squared_to(at) >= 24.0 * 24.0
+	if _nav_target_refresh_timer <= 0.0 or target_changed:
+		navigation_agent.target_position = at
+		_nav_target_refresh_timer = NAV_TARGET_REFRESH_INTERVAL
+	if offset.length() <= stopping_distance:
+		velocity = Vector2.ZERO
+		navigation_agent.velocity = Vector2.ZERO
+		_update_animation(false)
+		return
 	var next_position: Vector2 = navigation_agent.get_next_path_position()
 	var direction: Vector2 = (next_position - global_position).normalized()
 	if direction == Vector2.ZERO:
 		direction = offset.normalized()
 	facing_left = direction.x < 0.0
-	navigation_agent.velocity = direction * speed
+	_ai_moving = true
+	navigation_agent.velocity = direction * speed * _resin_speed_multiplier()
 	_update_animation(true)
 
 
 func _on_safe_velocity_computed(safe_velocity: Vector2) -> void:
-	if dead or NetworkManager.is_client or is_attacking:
+	if dead or NetworkManager.is_client or is_attacking or not _ai_moving:
 		return
 	velocity = safe_velocity
 	move_and_slide()
@@ -130,13 +213,17 @@ func _find_nearest_alive_player() -> GamePlayer:
 		if not node is GamePlayer:
 			continue
 		var candidate := node as GamePlayer
-		if not candidate.visible or candidate.hp <= 0.0:
+		if not candidate.visible or candidate.is_hidden or candidate.hp <= 0.0:
 			continue
 		var distance: float = global_position.distance_squared_to(candidate.global_position)
 		if distance < nearest_distance:
 			nearest_distance = distance
 			nearest = candidate
 	return nearest
+
+
+func _is_current_target_valid() -> bool:
+	return is_instance_valid(_current_target) and _current_target.visible and not _current_target.is_hidden and _current_target.hp > 0.0
 
 
 func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:
@@ -187,6 +274,7 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	_noise_lures.clear()
 	network_alive = false
 	hp = 0.0
 	network_health = 0.0
@@ -221,7 +309,7 @@ func _attack(target: GamePlayer) -> void:
 	is_attacking = true
 	_update_animation(false)
 	if is_instance_valid(target):
-		target.take_damage(attack_damage, global_position, 180.0)
+		target.take_contact_damage(attack_damage, global_position, 180.0)
 	await get_tree().create_timer(attack_cooldown).timeout
 	if is_instance_valid(self) and not dead:
 		_can_attack = true

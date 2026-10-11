@@ -141,18 +141,7 @@ func use_item(index: int) -> void:
 	var slot: Dictionary = get_slot(index)
 	if slot.is_empty() or owner_player == null:
 		return
-	var item_id: String = str(slot.get("id", ""))
-	var data: Dictionary = ItemDB.get_item(item_id)
-	match str(data.get("type", "")):
-		"healing":
-			owner_player.heal(float(data.get("heal", 50.0)))
-			remove_item(item_id, 1)
-		"ammo":
-			owner_player.add_reserve_ammo(str(data.get("ammo_for", "")), int(slot.get("amount", 0)))
-			remove_item(item_id, int(slot.get("amount", 0)))
-		"currency":
-			owner_player.coins += int(slot.get("amount", 0))
-			remove_item(item_id, int(slot.get("amount", 0)))
-		"weapon", "pistol", "smg", "shotgun", "rifle":
-			if owner_player.has_method("on_weapon_picked"):
-				owner_player.on_weapon_picked(item_id)
+	# Route every item through the same authoritative player logic. This keeps
+	# inventory use, keyboard use, and the HUD action button consistent.
+	if owner_player.has_method("use_item"):
+		owner_player.call("use_item", index)

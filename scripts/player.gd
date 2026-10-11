@@ -1,20 +1,29 @@
 extends CharacterBody2D
 class_name GamePlayer
 
+# Локальный игрок обрабатывает ввод и синхронизирует позицию по сети.
 signal player_died(player_id: int)
 
 const WEAPON_IDS: Array[String] = ["pistol", "smg", "shotgun", "rifle"]
+const MELEE_WEAPON_IDS: Array[String] = []
 const SNAPSHOT_INTERVAL: float = 0.033
+const MELEE_RANGE: float = 4.0 * 50.0
+const MELEE_COLLISION_MASK: int = 7 # World + Player + Zombie.
+var movement_revision: int = 0
 
-@export var speed: float = 200.0
+@export var speed: float = 4.0 * 50.0 # 4 тайла/с при размере тайла 50 px.
 @export var peer_id: String = "1"
 @export var is_local: bool = true
+@export var is_hidden: bool = false
+var _resin_slows: Dictionary = {}
 
 @onready var health: Node = $Health
 @onready var inventory: Inventory = $Inventory
 @onready var weapon_pivot: Node2D = $WeaponPivot
 @onready var weapon_sprite: Sprite2D = $WeaponPivot/WeaponSprite
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var melee_pivot: Node2D = $MeleePivot
+@onready var melee_sprite: AnimatedSprite2D = $MeleePivot/MeleeSlash
 
 var current_weapon_slot: int = -1
 var current_weapon: Dictionary = {}
@@ -30,10 +39,14 @@ var network_position_q: Vector2i = Vector2i.ZERO
 var trajectory_pos: Vector2 = Vector2.ZERO
 var trajectory_vel: Vector2 = Vector2.ZERO
 var has_trajectory: bool = false
+var _aim_screen_position: Vector2 = Vector2.ZERO
+var _has_aim_screen_position: bool = false
 
 var _fire_timer: float = 0.0
 var _melee_timer: float = 0.0
 var _step_timer: float = 0.0
+var _movement_send_timer: float = 0.0
+var _pulse_expiry_timer: float = 0.0
 var knockback_velocity: Vector2 = Vector2.ZERO
 var _hurt_flash_timer: float = 0.0
 var _invuln_timer: float = 0.0
@@ -42,12 +55,18 @@ var _last_replicated_hp: float = 100.0
 var _last_network_inventory_text: String = ""
 var _last_remote_weapon_id: String = ""
 var _applying_network_inventory: bool = false
+var _stealth_bushes: Array[Node] = []
+# Private per-viewer deadlines; never include these in replication.
+var _pulse_detections: Dictionary = {}
 
 
 func _ready() -> void:
 	add_to_group("player")
-	is_local = NetworkManager.is_single or get_multiplayer_authority() == multiplayer.get_unique_id()
+	is_local = NetworkManager.is_single or get_multiplayer_authority() == NetworkManager.get_local_player_id()
 	$Camera2D.enabled = is_local
+	melee_sprite.visible = false
+	_setup_melee_animation()
+	melee_sprite.animation_finished.connect(_on_melee_animation_finished)
 	health.died.connect(_on_died)
 	health.health_changed.connect(_on_health_changed)
 	inventory.changed.connect(_on_inventory_changed)
@@ -58,10 +77,45 @@ func _ready() -> void:
 		NetworkManager.quantize(global_position.y)
 	)
 	_last_replicated_hp = hp
+	if is_local:
+		var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+		if joystick != null:
+			joystick.aim_position_changed.connect(_on_aim_position_changed)
+	_update_stealth_visual()
 	_on_inventory_changed()
+	if inventory.add_item("pistol"):
+		var starting_weapon: Dictionary = ItemDB.get_item("pistol")
+		var total_starting_ammo: int = int(starting_weapon.get("starting_ammo", 24))
+		var starting_magazine: int = mini(int(starting_weapon.get("magazine_size", 12)), total_starting_ammo)
+		magazine["pistol"] = starting_magazine
+		var starting_reserve: int = maxi(0, total_starting_ammo - starting_magazine)
+		if starting_reserve > 0:
+			inventory.add_item("ammo_pistol", starting_reserve)
+		select_inventory_slot(inventory.selected_slot if inventory.selected_slot >= 0 else 0)
 	var death_panel: Node = get_tree().current_scene.get_node_or_null("UI/DeathPanel")
 	if is_local and death_panel != null and death_panel.has_signal("respawn_requested"):
 		death_panel.respawn_requested.connect(_respawn)
+
+
+func apply_movement_snapshot(revision: int, server_position: Vector2) -> bool:
+	if not NetworkManager.is_client or revision < movement_revision:
+		return false
+	var changed: bool = revision > movement_revision
+	if changed:
+		movement_revision = revision
+	if changed:
+		global_position = server_position
+		set_trajectory(server_position, Vector2.ZERO)
+		velocity = Vector2.ZERO
+	return changed
+
+
+func accepts_client_movement(revision: int) -> bool:
+	return not _dead and revision == movement_revision
+
+
+func take_contact_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> bool:
+	return take_damage(amount, source_pos, knockback_force)
 
 
 func _physics_process(delta: float) -> void:
@@ -73,7 +127,7 @@ func _physics_process(delta: float) -> void:
 		_process_hurt(delta)
 		return
 	var direction: Vector2 = _get_move_direction()
-	velocity = direction * speed + knockback_velocity
+	velocity = direction * speed * _resin_speed_multiplier() + knockback_velocity
 	move_and_slide()
 	_process_hurt(delta)
 	network_position_q = Vector2i(
@@ -81,35 +135,46 @@ func _physics_process(delta: float) -> void:
 		NetworkManager.quantize(global_position.y)
 	)
 	if NetworkManager.is_client:
-		NetworkManager.send_move(network_position_q.x, network_position_q.y)
+		_movement_send_timer -= delta
+		if _movement_send_timer <= 0.0:
+			_movement_send_timer = SNAPSHOT_INTERVAL
+			NetworkManager.send_move(network_position_q.x, network_position_q.y, movement_revision)
 	_update_footsteps(direction, delta)
 
 
 func _get_move_direction() -> Vector2:
 	var direction: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-	var joystick: ScreenJoystick = get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
-	if joystick != null and joystick.value.length_squared() > 0.0:
+	var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.value.length_squared() > 0.0001:
 		direction = joystick.value
-	return direction.limit_length(1.0)
+	if direction.length_squared() > 1.0:
+		direction = direction.normalized()
+	return direction
 
 
 func _process(delta: float) -> void:
+	_pulse_expiry_timer -= delta
+	if _pulse_expiry_timer <= 0.0:
+		_pulse_expiry_timer = 0.2
+		if _expire_pulse_detections():
+			_update_stealth_visual()
 	if NetworkManager.is_client:
 		_apply_replicated_inventory()
 		_apply_replicated_health()
 	if is_local:
-		var aim: Vector2 = get_global_mouse_position() - global_position
+		var aim: Vector2 = _get_aim_world_position() - global_position
 		if aim.length_squared() > 0.001:
 			weapon_pivot.rotation = aim.angle()
 			network_aim_angle = weapon_pivot.rotation
 			weapon_sprite.flip_v = aim.x < 0.0
 		if not _dead:
 			var loaded_ammo: int = _current_loaded_ammo()
-			if current_weapon.is_empty() or loaded_ammo <= 0:
-				if Input.is_action_just_pressed("shoot"):
-					melee_attack()
-			elif Input.is_action_pressed("shoot") and _fire_timer <= 0.0:
-				shoot()
+			if _mouse_shoot_input_allowed():
+				if current_weapon.is_empty() or loaded_ammo <= 0:
+					if Input.is_action_just_pressed("shoot"):
+						melee_attack()
+				elif Input.is_action_pressed("shoot") and _fire_timer <= 0.0:
+					shoot()
 		return
 	weapon_pivot.rotation = network_aim_angle
 	_apply_remote_weapon_visual()
@@ -120,6 +185,111 @@ func _process(delta: float) -> void:
 	var damping: float = 1.0 - pow(0.9, snapshot_step)
 	trajectory_vel = trajectory_vel.lerp(Vector2.ZERO, damping)
 	global_position = global_position.lerp(trajectory_pos, clampf(15.0 * delta, 0.0, 1.0))
+
+
+func enter_stealth_bush(bush: Node) -> void:
+	if _dead or _stealth_bushes.has(bush):
+		return
+	_stealth_bushes.append(bush)
+	_set_hidden_state(true)
+
+
+func exit_stealth_bush(bush: Node) -> void:
+	_stealth_bushes.erase(bush)
+	if _stealth_bushes.is_empty():
+		_set_hidden_state(false)
+
+
+func _set_hidden_state(value: bool) -> void:
+	if is_hidden == value:
+		return
+	is_hidden = value
+	_update_stealth_visual()
+
+
+func _update_stealth_visual() -> void:
+	var revealed: bool = is_pulse_detected_by(NetworkManager.get_local_player_id())
+	var concealed: bool = is_hidden and not is_local and not revealed
+	# Root visible is server-replicated and used by combat; keep it unchanged.
+	$Sprite2D.visible = not concealed
+	weapon_pivot.visible = not concealed
+	self_modulate = Color(1.0, 1.0, 1.0, 0.48 if is_hidden and is_local else 1.0)
+
+
+func is_in_stealth_bush() -> bool:
+	return is_hidden
+
+
+func grant_pulse_detection(viewer_id: int, source_id: int, duration: float) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if _dead or hp <= 0.0 or viewer_id <= 0 or not is_finite(duration) or duration <= 0.0:
+		return
+	_store_pulse_detection(viewer_id, source_id, duration)
+	if NetworkManager.is_host and viewer_id != NetworkManager.get_local_player_id() and multiplayer.get_peers().has(viewer_id):
+		sync_pulse_detection.rpc_id(viewer_id, source_id, duration)
+
+
+func revoke_pulse_detection(viewer_id: int, source_id: int) -> void:
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	_remove_pulse_detection(viewer_id, source_id)
+	if NetworkManager.is_host and viewer_id != NetworkManager.get_local_player_id() and multiplayer.get_peers().has(viewer_id):
+		sync_pulse_detection.rpc_id(viewer_id, source_id, 0.0)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func sync_pulse_detection(source_id: int, duration: float) -> void:
+	# Player authority belongs to its owner, so explicitly require the host.
+	if not NetworkManager.is_client or multiplayer.get_remote_sender_id() != 1:
+		return
+	if not is_finite(duration) or duration < 0.0:
+		return
+	var viewer_id: int = NetworkManager.get_local_player_id()
+	if duration == 0.0:
+		_remove_pulse_detection(viewer_id, source_id)
+	elif not _dead and hp > 0.0:
+		_store_pulse_detection(viewer_id, source_id, duration)
+
+
+func _store_pulse_detection(viewer_id: int, source_id: int, duration: float) -> void:
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	sources[source_id] = Time.get_ticks_msec() + int(ceil(duration * 1000.0))
+	_pulse_detections[viewer_id] = sources
+	_update_stealth_visual()
+
+
+func _remove_pulse_detection(viewer_id: int, source_id: int) -> void:
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	sources.erase(source_id)
+	if sources.is_empty():
+		_pulse_detections.erase(viewer_id)
+	_update_stealth_visual()
+
+
+func is_pulse_detected_by(viewer_id: int) -> bool:
+	if _dead or hp <= 0.0:
+		return false
+	var sources: Dictionary = _pulse_detections.get(viewer_id, {})
+	var now: int = Time.get_ticks_msec()
+	for deadline: Variant in sources.values():
+		if int(deadline) > now:
+			return true
+	return false
+
+
+func _expire_pulse_detections() -> bool:
+	var now: int = Time.get_ticks_msec()
+	var expired_any: bool = false
+	for viewer_id: Variant in _pulse_detections.keys():
+		var sources: Dictionary = _pulse_detections[viewer_id]
+		for source_id: Variant in sources.keys():
+			if int(sources[source_id]) <= now:
+				sources.erase(source_id)
+				expired_any = true
+		if sources.is_empty():
+			_pulse_detections.erase(viewer_id)
+	return expired_any
 
 
 func set_trajectory(pos: Vector2, vel: Vector2) -> void:
@@ -145,6 +315,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_select_next_weapon(-1)
 		elif mouse_event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_select_next_weapon(1)
+		elif mouse_event.button_index == MOUSE_BUTTON_RIGHT and not OS.has_feature("mobile"):
+			if get_viewport().gui_get_hovered_control() == null:
+				use_item(inventory.selected_slot)
 
 
 func select_inventory_slot(index: int) -> void:
@@ -198,7 +371,7 @@ func shoot() -> void:
 		UISoundManager.play_ui_sound("empty_click.wav")
 		_fire_timer = 0.2
 		return
-	var direction: Vector2 = (get_global_mouse_position() - global_position).normalized()
+	var direction: Vector2 = _get_aim_direction()
 	if direction == Vector2.ZERO:
 		return
 	magazine[weapon_id] = loaded - 1
@@ -220,13 +393,25 @@ func get_muzzle_position(direction: Vector2) -> Vector2:
 
 
 func reload() -> void:
-	if current_weapon.is_empty():
-		return
 	var weapon_id: String = str(current_weapon.get("id", ""))
+	if weapon_id.is_empty():
+		var selected_item: Dictionary = inventory.get_selected()
+		var selected_data: Dictionary = ItemDB.get_item(str(selected_item.get("id", "")))
+		if str(selected_data.get("type", "")) == "ammo":
+			weapon_id = str(selected_data.get("ammo_for", ""))
+	if weapon_id.is_empty() or not _inventory_has_item(weapon_id):
+		return
 	if NetworkManager.is_client:
 		NetworkManager.send_action({"type": "reload", "weapon_id": weapon_id})
 		return
 	_reload_weapon(weapon_id)
+
+
+func _inventory_has_item(item_id: String) -> bool:
+	for index: int in range(inventory.max_slots):
+		if str(inventory.get_slot(index).get("id", "")) == item_id:
+			return true
+	return false
 
 
 func _reload_weapon(weapon_id: String) -> int:
@@ -249,27 +434,211 @@ func _reload_weapon(weapon_id: String) -> int:
 	return int(magazine.get(weapon_id, loaded))
 
 
-func use_item(slot_index: int) -> void:
+func use_item(slot_index: int, action_direction: Vector2 = Vector2.ZERO) -> void:
+	var aim_direction: Vector2 = _get_aim_direction()
+	if action_direction.is_finite() and action_direction.length_squared() > 0.001:
+		aim_direction = action_direction.normalized()
 	if NetworkManager.is_client:
-		NetworkManager.use_item(slot_index)
+		NetworkManager.send_action({"type": "use_item", "slot": slot_index, "direction": [aim_direction.x, aim_direction.y]})
 		return
 	var item: Dictionary = inventory.get_slot(slot_index)
 	var item_id: String = str(item.get("id", ""))
-	if item_id == "medkit":
+	if item.is_empty():
+		return
+	var data: Dictionary = ItemDB.get_item(item_id)
+	var use_action: String = str(data.get("use_action", ""))
+	if item_id == "medkit" or use_action == "heal" or str(data.get("type", "")) == "healing":
 		if float(health.get("current_health")) >= float(health.get("max_health")):
 			return
-		health.call("heal", 50.0)
-		inventory.remove_item("medkit", 1)
+		health.call("heal", float(data.get("heal", 50.0)))
+		inventory.remove_item(item_id, 1)
 		UISoundManager.play_ui_sound("heal.wav")
 	elif _is_weapon_id(item_id):
 		select_inventory_slot(slot_index)
+	elif str(data.get("type", "")) == "ammo":
+		if _inventory_has_item(str(data.get("ammo_for", ""))):
+			reload()
+		return
+	elif str(data.get("type", "")) == "currency":
+		var coin_amount: int = int(item.get("amount", 0))
+		coins += coin_amount
+		inventory.remove_item(item_id, coin_amount)
+		return
+	elif use_action == "throw" or str(data.get("type", "")) == "throwable":
+		var game: Node = get_tree().current_scene
+		if item_id == "tar_bomb" and game != null and game.has_method("throw_resin_bomb"):
+			game.call("throw_resin_bomb", self, aim_direction, slot_index)
+		elif item_id == "noise_lure" and game != null and game.has_method("throw_noise_lure"):
+			game.call("throw_noise_lure", self, aim_direction, slot_index)
+		elif game != null and game.has_method("throw_inventory_item"):
+			game.call("throw_inventory_item", self, item_id, slot_index, aim_direction)
+		else:
+			push_warning("Для метательного предмета '%s' не задан обработчик" % item_id)
+	elif use_action == "place":
+		if item_id == "pulse_beacon":
+			_use_pulse_beacon(slot_index)
+		else:
+			var game: Node = get_tree().current_scene
+			if game != null and game.has_method("place_inventory_item"):
+				game.call("place_inventory_item", self, item_id, slot_index, aim_direction)
+			else:
+				push_warning("Для предмета '%s' не задан обработчик установки" % item_id)
+	else:
+		var game: Node = get_tree().current_scene
+		if game != null and game.has_method("use_inventory_item"):
+			game.call("use_inventory_item", self, item_id, slot_index, aim_direction)
+		else:
+			push_warning("Для предмета '%s' не задано действие использования" % item_id)
+
+
+func collect_item(item_id: String, amount: int = 1) -> bool:
+	if amount <= 0 or ItemDB.get_item(item_id).is_empty():
+		return false
+	if item_id == "coin":
+		coins += amount
+		return true
+	return inventory.add_item(item_id, amount)
+
+
+func get_selected_action_info() -> Dictionary:
+	if _dead or hp <= 0.0:
+		return {"action": "none", "icon": "use", "label": "НЕДОСТУПНО", "enabled": false}
+	var item: Dictionary = inventory.get_selected()
+	if item.is_empty():
+		return {"action": "melee", "icon": "melee", "label": "УДАР", "enabled": _melee_timer <= 0.0}
+	var item_id: String = str(item.get("id", ""))
+	var data: Dictionary = ItemDB.get_item(item_id)
+	if _is_weapon_id(item_id):
+		var loaded: int = int(magazine.get(item_id, 0))
+		if loaded > 0:
+			return {"action": "shoot", "icon": "shoot", "label": "ОГОНЬ", "enabled": _fire_timer <= 0.0}
+		return {"action": "melee", "icon": "melee", "label": "УДАР", "enabled": _melee_timer <= 0.0}
+	if str(data.get("type", "")) == "ammo":
+		var ammo_for: String = str(data.get("ammo_for", ""))
+		var ammo_weapon: Dictionary = ItemDB.get_item(ammo_for)
+		var has_matching_weapon: bool = _inventory_has_item(ammo_for)
+		var loaded_for_ammo: int = int(magazine.get(ammo_for, 0))
+		var can_reload: bool = has_matching_weapon and not ammo_weapon.is_empty()
+		var has_room: bool = can_reload and loaded_for_ammo < int(ammo_weapon.get("magazine_size", 0))
+		return {"action": "reload", "icon": "reload", "label": "ПЕРЕЗАРЯДКА" if can_reload else "НЕТ ОРУЖИЯ", "enabled": has_room and int(item.get("amount", 0)) > 0}
+	if str(data.get("type", "")) == "currency":
+		return {"action": "use", "icon": "generic", "label": "СОБРАТЬ МОНЕТЫ", "enabled": int(item.get("amount", 0)) > 0}
+	if item_id == "medkit" or str(data.get("use_action", "")) == "heal" or str(data.get("type", "")) == "healing":
+		var needs_heal: bool = float(health.get("current_health")) < float(health.get("max_health"))
+		return {"action": "use", "icon": "heal", "label": "ЛЕЧИТЬ", "enabled": needs_heal and int(item.get("amount", 0)) > 0}
+	if item_id in ["tar_bomb", "noise_lure"] or str(data.get("use_action", "")) == "throw" or str(data.get("type", "")) == "throwable":
+		return {"action": "use", "icon": "throw", "label": "БРОСИТЬ", "enabled": int(item.get("amount", 0)) > 0}
+	if item_id == "pulse_beacon" or str(data.get("use_action", "")) == "place" or str(data.get("type", "")) == "placeable":
+		return {"action": "use", "icon": "place", "label": "ПОСТАВИТЬ", "enabled": int(item.get("amount", 0)) > 0}
+	if str(data.get("type", "")) == "ammo":
+		return {"action": "none", "icon": "use", "label": "НЕТ ДЕЙСТВИЯ", "enabled": false}
+	var action_icon: String = str(data.get("action_icon", "use"))
+	return {"action": "use", "icon": action_icon, "label": "ИСПОЛЬЗОВАТЬ", "enabled": int(item.get("amount", 0)) > 0}
+
+
+func perform_selected_action() -> void:
+	var action_info: Dictionary = get_selected_action_info()
+	if not bool(action_info.get("enabled", false)):
+		return
+	match str(action_info.get("action", "none")):
+		"shoot":
+			shoot()
+		"melee":
+			melee_attack()
+		"reload":
+			reload()
+		"use":
+			use_item(inventory.selected_slot)
+
+
+func _mouse_shoot_input_allowed() -> bool:
+	if OS.has_feature("mobile"):
+		return false
+	var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.visible and joystick.is_input_active():
+		return false
+	var hovered: Control = get_viewport().gui_get_hovered_control()
+	# Input.is_action_just_pressed() is polled from _process, so GUI event
+	# handling alone does not stop a click on an inventory Panel from punching.
+	# Any GUI control under the pointer owns that click; world attacks only fire
+	# when the pointer is over the playfield.
+	return hovered == null
+
+
+func _use_pulse_beacon(slot_index: int) -> void:
+	# Clients request use_item; only the host (or solo game) emits and consumes.
+	if not NetworkManager.is_single and not NetworkManager.is_host:
+		return
+	if _dead or hp <= 0.0:
+		return
+	var item: Dictionary = inventory.get_slot(slot_index)
+	if str(item.get("id", "")) != "pulse_beacon" or int(item.get("amount", 0)) <= 0:
+		return
+	var game: Node = get_tree().current_scene
+	if game == null:
+		return
+	var beacon_scene: PackedScene = load("res://scenes/objects/PulseBeacon.tscn") as PackedScene
+	var beacon: PulseBeacon = beacon_scene.instantiate() as PulseBeacon
+	var data: Dictionary = ItemDB.get_item("pulse_beacon")
+	beacon.detection_radius = float(data.get("detection_radius", 280.0))
+	beacon.detection_duration = float(data.get("detection_duration", 4.0))
+	var container: Node = game.get_node_or_null("MapContainer/Entities")
+	if container == null:
+		container = game
+	container.add_child(beacon, true)
+	# emit_pulse positions itself at the player and sends private detection RPCs.
+	if not beacon.emit_pulse(self):
+		beacon.queue_free()
+		return
+	if not inventory.remove_item("pulse_beacon", 1):
+		beacon.queue_free()
+		return
+	if NetworkManager.is_host and game.has_method("sync_pulse_beacon_visual"):
+		game.rpc("sync_pulse_beacon_visual", beacon.global_position, beacon.detection_radius, 0.8)
+
+
+
+func add_resin_slow(source_id: int, multiplier: float) -> void:
+	_resin_slows[source_id] = clampf(multiplier, 0.1, 1.0)
+
+
+func remove_resin_slow(source_id: int) -> void:
+	_resin_slows.erase(source_id)
+
+
+func _resin_speed_multiplier() -> float:
+	var multiplier: float = 1.0
+	for value: Variant in _resin_slows.values():
+		multiplier = minf(multiplier, float(value))
+	return multiplier
 
 
 func _get_aim_direction() -> Vector2:
-	var direction: Vector2 = get_global_mouse_position() - global_position
+	var direction: Vector2 = _get_aim_world_position() - global_position
 	if direction.length_squared() <= 0.001:
 		return Vector2.RIGHT
 	return direction.normalized()
+
+
+func _get_aim_world_position() -> Vector2:
+	if _has_aim_screen_position:
+		return get_viewport().get_canvas_transform().affine_inverse() * _aim_screen_position
+	var joystick := get_tree().get_first_node_in_group("virtual_joystick") as ScreenJoystick
+	if joystick != null and joystick.is_input_active():
+		# On touch devices the fallback mouse position is the joystick finger.
+		# Keep the current aim and remember it, so releasing the joystick cannot
+		# move the aim to the last joystick touch position either.
+		var current_aim_direction := Vector2.RIGHT.rotated(weapon_pivot.rotation)
+		var current_aim_position := global_position + current_aim_direction
+		_aim_screen_position = get_viewport().get_canvas_transform() * current_aim_position
+		_has_aim_screen_position = true
+		return current_aim_position
+	return get_global_mouse_position()
+
+
+func _on_aim_position_changed(screen_position: Vector2) -> void:
+	_aim_screen_position = screen_position
+	_has_aim_screen_position = true
 
 
 func _current_loaded_ammo() -> int:
@@ -285,53 +654,95 @@ func melee_attack() -> void:
 	var direction: Vector2 = _get_aim_direction()
 	var my_position: Vector2 = global_position
 	var damage: float = 15.0 if current_weapon.is_empty() else 10.0
-	var attack_range: float = 60.0
 	var knockback_force: float = 400.0
 	_melee_timer = 0.45
-
-	var targets: Array[Node] = []
-	targets.append_array(get_tree().get_nodes_in_group("enemy"))
-	for player_node: Node in get_tree().get_nodes_in_group("player"):
-		if player_node != self:
-			targets.append(player_node)
-
-	for node: Node in targets:
-		if node == self or not node is Node2D or not node.has_method("take_damage"):
-			continue
-		var target: Node2D = node as Node2D
-		if target is GamePlayer and (not (target as GamePlayer).visible or (target as GamePlayer)._dead):
-			continue
-		if target is GameZombie and (target as GameZombie).dead:
-			continue
-		var to_target: Vector2 = target.global_position - my_position
-		if to_target.length() > attack_range or to_target.length_squared() <= 0.001:
-			continue
-		if absf(direction.angle_to(to_target)) > deg_to_rad(60.0):
-			continue
-
-		if NetworkManager.is_client:
-			var target_id: String = ""
-			if target is GamePlayer:
-				target_id = "player:%d" % (target as GamePlayer).get_multiplayer_authority()
-			elif target is GameZombie:
-				target_id = "zombie:%s" % (target as GameZombie).zombie_id
-			else:
-				target_id = "node:%s" % str(target.get_path())
-			NetworkManager.send_action({
-				"type": "melee_attack",
-				"target_id": target_id,
-				"damage": damage,
-				"knockback": knockback_force,
-				"dir": [direction.x, direction.y],
-				"source_pos": [my_position.x, my_position.y],
-			})
-		else:
-			target.call("take_damage", damage, my_position, knockback_force)
-
-
-func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:
-	if NetworkManager.is_client or _dead or hp <= 0.0 or _invuln_timer > 0.0 or amount <= 0.0:
+	var target: Node2D = get_melee_raycast_target(direction)
+	var impact_position: Vector2 = target.global_position if target != null else global_position + direction * 68.0
+	play_melee_effect(direction, impact_position)
+	if NetworkManager.is_client:
+		NetworkManager.send_action({"type": "melee_attack", "dir": [direction.x, direction.y]})
 		return
+	if target == null:
+		return
+	if target is GamePlayer:
+		(target as GamePlayer).take_contact_damage(damage, my_position, knockback_force)
+	else:
+		target.call("take_damage", damage, my_position, knockback_force)
+
+
+func play_melee_effect(direction: Vector2, impact_position: Vector2 = Vector2.ZERO) -> void:
+	if direction.length_squared() <= 0.001:
+		return
+	var normalized_direction: Vector2 = direction.normalized()
+	var local_angle: float = normalized_direction.angle() - global_rotation
+	melee_pivot.rotation = local_angle
+	melee_pivot.position = to_local(impact_position) if impact_position != Vector2.ZERO else normalized_direction * 68.0
+	melee_sprite.position = Vector2.ZERO
+	melee_sprite.scale = Vector2(0.42, 0.42)
+	melee_sprite.modulate = Color.WHITE
+	melee_sprite.visible = true
+	melee_sprite.play("slash")
+	var swing_tween: Tween = create_tween()
+	swing_tween.tween_property(melee_pivot, "rotation", local_angle + 0.22, 0.18)
+
+
+func _setup_melee_animation() -> void:
+	var slash_sheet: Texture2D = load("res://sprites/effects/melee_slash_sheet.png") as Texture2D
+	if slash_sheet == null or slash_sheet.get_width() % 6 != 0:
+		push_warning("Не удалось загрузить шестикадровый спрайт удара")
+		return
+	var frames: SpriteFrames = SpriteFrames.new()
+	frames.remove_animation("default")
+	frames.add_animation("slash")
+	frames.set_animation_speed("slash", 20.0)
+	frames.set_animation_loop("slash", false)
+	var frame_width: int = slash_sheet.get_width() / 6
+	for frame_index: int in range(6):
+		var atlas: AtlasTexture = AtlasTexture.new()
+		atlas.atlas = slash_sheet
+		atlas.region = Rect2(frame_index * frame_width, 0, frame_width, slash_sheet.get_height())
+		frames.add_frame("slash", atlas)
+	melee_sprite.sprite_frames = frames
+	melee_sprite.animation = "slash"
+	melee_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+
+func _on_melee_animation_finished() -> void:
+	melee_sprite.visible = false
+	melee_pivot.position = Vector2.ZERO
+
+
+func get_melee_raycast_target(direction: Vector2) -> Node2D:
+	if direction.length_squared() <= 0.001:
+		return null
+	var normalized_direction: Vector2 = direction.normalized()
+	var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(
+		global_position,
+		global_position + normalized_direction * MELEE_RANGE,
+		MELEE_COLLISION_MASK,
+		[get_rid()]
+	)
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	var hit: Dictionary = get_world_2d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	var target: Node2D = hit.get("collider") as Node2D
+	if target == null or not target.has_method("take_damage"):
+		return null
+	if target.is_in_group("player") and (target as GamePlayer)._dead:
+		return null
+	if target.is_in_group("enemy") and target is GameZombie and (target as GameZombie).dead:
+		return null
+	if not target.is_in_group("player") and not target.is_in_group("enemy"):
+		return null
+	return target
+
+
+func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> bool:
+	if NetworkManager.is_client or _dead or hp <= 0.0 or _invuln_timer > 0.0 or amount <= 0.0:
+		return false
+	var previous_hp: float = hp
 	_invuln_timer = 0.1
 	_hurt_flash_timer = 0.15
 	if knockback_force > 0.0 and source_pos != Vector2.ZERO:
@@ -344,6 +755,7 @@ func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_fo
 		UISoundManager.play_ui_sound("player_hurt.wav")
 	if hp <= 0.0:
 		_on_death(source_pos)
+	return hp < previous_hp
 
 
 func _process_hurt(delta: float) -> void:
@@ -450,10 +862,10 @@ func _update_footsteps(direction: Vector2, delta: float) -> void:
 
 func _surface_step_sound() -> String:
 	var tilemap: TileMapLayer = get_tree().get_first_node_in_group("ground_tiles") as TileMapLayer
-	if tilemap != null:
+	if tilemap != null and tilemap.tile_set != null:
 		var cell: Vector2i = tilemap.local_to_map(tilemap.to_local(global_position))
 		var tile_data: TileData = tilemap.get_cell_tile_data(cell)
-		if tile_data != null:
+		if tile_data != null and tilemap.tile_set.get_custom_data_layer_by_name("surface") >= 0:
 			var surface: String = str(tile_data.get_custom_data("surface"))
 			if surface in ["grass", "stone", "wood"]:
 				return "step_%s.wav" % surface
@@ -578,7 +990,7 @@ func spawn_dropped_pickup(
 		pickup = game.call("_spawn_pickup", data) as GamePickup
 		var entities: Node = game.get_node_or_null("MapContainer/Entities")
 		if pickup != null and entities != null:
-			entities.add_child(pickup, true)
+			entities.call_deferred("add_child", pickup, true)
 	if pickup != null:
 		pickup.item_id = item_id
 		pickup.amount = amount
@@ -590,6 +1002,9 @@ func _on_died() -> void:
 	if _dead:
 		return
 	_dead = true
+	_pulse_detections.clear()
+	_stealth_bushes.clear()
+	_set_hidden_state(false)
 	velocity = Vector2.ZERO
 	knockback_velocity = Vector2.ZERO
 	modulate = Color(0.5, 0.5, 0.5, 0.5)
@@ -597,18 +1012,20 @@ func _on_died() -> void:
 	collision_shape.set_deferred("disabled", true)
 	set_physics_process(false)
 	_drop_inventory_on_death()
+	var current_game: Node = get_tree().current_scene
+	var allow_respawn: bool = current_game == null or not current_game.has_method("can_respawn") or bool(current_game.call("can_respawn", get_multiplayer_authority()))
 	if NetworkManager.is_single or NetworkManager.is_host:
 		player_died.emit(get_multiplayer_authority())
 	if is_local:
 		UISoundManager.play_ui_sound("player_death.wav")
 		var death_panel: Node = get_tree().current_scene.get_node_or_null("UI/DeathPanel")
-		if death_panel != null and death_panel.has_method("show_death"):
+		if allow_respawn and death_panel != null and death_panel.has_method("show_death"):
 			death_panel.show_death(5.0)
-		elif NetworkManager.is_single or NetworkManager.is_host:
+		elif allow_respawn and (NetworkManager.is_single or NetworkManager.is_host):
 			await get_tree().create_timer(5.0).timeout
 			if is_instance_valid(self) and _dead:
 				_respawn()
-	elif NetworkManager.is_host:
+	elif allow_respawn and NetworkManager.is_host:
 		await get_tree().create_timer(5.0).timeout
 		if is_instance_valid(self) and _dead:
 			_respawn()
@@ -624,6 +1041,9 @@ func _respawn() -> void:
 
 func restore_respawn_state() -> void:
 	_dead = false
+	_pulse_detections.clear()
+	_stealth_bushes.clear()
+	_set_hidden_state(false)
 	visible = true
 	collision_shape.set_deferred("disabled", false)
 	set_physics_process(true)

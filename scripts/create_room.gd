@@ -27,9 +27,9 @@ func _ready() -> void:
 func _on_create_pressed() -> void:
 	create_button.disabled = true
 	NetworkManager.room_name = room_name_input.text.strip_edges()
-	var selected_mode: String = mode_option.get_item_text(mode_option.selected)
 	var selected_map: String = map_option.get_item_text(map_option.selected)
 	status_label.text = "Создание комнаты…"
+	var selected_mode: String = "classic" if mode_option.selected == 0 else "battle_royale"
 	NetworkManager.create_room(selected_mode, selected_map, 20)
 
 
