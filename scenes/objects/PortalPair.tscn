@@ -21,6 +21,10 @@ monitoring = false
 monitorable = false
 script = ExtResource("2_visual")
 
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="PortalA"]
+scale = Vector2(0.25, 0.25)
+texture_filter = 1
+
 [node name="EntryShape" type="CollisionShape2D" parent="PortalA"]
 shape = SubResource("Circle_A")
 disabled = true
@@ -33,6 +37,10 @@ monitoring = false
 monitorable = false
 script = ExtResource("2_visual")
 endpoint_index = 1
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="PortalB"]
+scale = Vector2(0.25, 0.25)
+texture_filter = 1
 
 [node name="EntryShape" type="CollisionShape2D" parent="PortalB"]
 shape = SubResource("Circle_B")

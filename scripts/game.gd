@@ -6,6 +6,8 @@ const PICKUP_SCENE: PackedScene = preload("res://scenes/objects/Pickup.tscn")
 const CHEST_SCENE: PackedScene = preload("res://scenes/objects/Chest.tscn")
 const NOISE_LURE_SCENE: PackedScene = preload("res://scenes/objects/NoiseLure.tscn")
 const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.tscn")
+const PULSE_BEACON_SCENE: PackedScene = preload("res://scenes/objects/PulseBeacon.tscn")
+const THROWN_ITEM_VISUAL_SCENE: PackedScene = preload("res://scenes/objects/ThrownItemVisual.tscn")
 
 @export var map_scene: PackedScene = preload("res://scenes/maps/Island.tscn")
 
@@ -21,6 +23,7 @@ const RESIN_PATCH_SCENE: PackedScene = preload("res://scenes/objects/ResinPatch.
 var _next_pickup_id: int = 1
 var _next_bullet_id: int = 1
 var _next_noise_lure_id: int = 1
+var _next_placed_item_id: int = 1
 var _server_fire_at: Dictionary = {}
 var sync_timer: float = 0.0
 const SYNC_INTERVAL: float = 0.033
@@ -28,6 +31,7 @@ const SYNC_INTERVAL: float = 0.033
 
 const MODE_CLASSIC := "classic"
 const MODE_BATTLE_ROYALE := "battle_royale"
+const ADAPTIVE_SYNC_INTERVAL: float = 0.25
 
 # One shared cadence keeps the portal window readable in both supported modes.
 # A short warning period prevents an immediate route change at match start.
@@ -46,6 +50,7 @@ var zone_start_radius: float = 1200.0
 var zone_target_radius: float = 260.0
 var _state_sync_timer: float = 0.0
 var _zone_damage_timer: float = 0.0
+var _adaptive_sync_timer: float = 0.0
 var _portal_pairs: Dictionary = {}
 var _pending_portal_transfers: Dictionary = {}
 var _portal_effect_revisions: Dictionary = {}
@@ -212,7 +217,10 @@ func _process(delta: float) -> void:
 	if not match_finished and (NetworkManager.is_single or NetworkManager.is_host):
 		_tick_match_rules(delta)
 	if NetworkManager.is_host:
-		_update_adaptive_sync_rates()
+		_adaptive_sync_timer -= delta
+		if _adaptive_sync_timer <= 0.0:
+			_adaptive_sync_timer = ADAPTIVE_SYNC_INTERVAL
+			_update_adaptive_sync_rates()
 		sync_timer += delta
 		if sync_timer >= SYNC_INTERVAL:
 			sync_timer = fmod(sync_timer, SYNC_INTERVAL)
@@ -307,12 +315,15 @@ func receive_match_state(time_left: float, radius: float, status: String, finish
 		$MatchOverlay.configure(zone_center, zone_radius, is_battle_royale_mode())
 func _broadcast_snapshot() -> void:
 	var tick: int = Time.get_ticks_msec()
+	var players: Array[GamePlayer] = []
+	var zombies: Array[GameZombie] = []
 	var players_state: Dictionary = {}
 	var zombies_state: Dictionary = {}
 	for node: Node in entities.get_children():
 		if not node is GamePlayer:
 			continue
 		var player: GamePlayer = node as GamePlayer
+		players.append(player)
 		var player_id: int = player.get_multiplayer_authority()
 		var world_position: Vector2 = player.global_position
 		players_state[str(player_id)] = {
@@ -320,12 +331,14 @@ func _broadcast_snapshot() -> void:
 			"y": world_position.y,
 			"rot": player.rotation,
 			"hp": player.hp,
+			"coins": player.coins,
 			"movement_revision": player.movement_revision,
 		}
 	for node: Node in get_tree().get_nodes_in_group("enemy"):
 		if not node is GameZombie:
 			continue
 		var zombie: GameZombie = node as GameZombie
+		zombies.append(zombie)
 		var world_position: Vector2 = zombie.global_position
 		zombies_state[str(zombie.get_instance_id())] = {
 			"x": world_position.x,
@@ -334,27 +347,31 @@ func _broadcast_snapshot() -> void:
 			"zombie_id": zombie.zombie_id,
 		}
 
+	var portal_states: Dictionary = _portal_states()
+	var max_sync_distance_squared: float = 800.0 * 800.0
 	for peer_id: int in multiplayer.get_peers():
-		var viewer: GamePlayer = _find_player(peer_id)
+		var viewer: GamePlayer = null
+		for candidate: GamePlayer in players:
+			if candidate.get_multiplayer_authority() == peer_id:
+				viewer = candidate
+				break
 		if viewer == null:
 			continue
 		var visible_players: Dictionary = {}
 		var visible_zombies: Dictionary = {}
-		for raw_id: Variant in players_state.keys():
-			var player: GamePlayer = _find_player(int(raw_id))
-			if player != null and viewer.global_position.distance_to(player.global_position) < 800.0:
-				visible_players[raw_id] = players_state[raw_id]
-		for raw_id: Variant in zombies_state.keys():
-			var zombie_state: Dictionary = zombies_state[raw_id] as Dictionary
-			var zombie_id: String = str(zombie_state.get("zombie_id", ""))
-			var zombie: GameZombie = _find_zombie(zombie_id)
-			if zombie != null and viewer.global_position.distance_to(zombie.global_position) < 800.0:
-				visible_zombies[raw_id] = zombie_state
+		for player: GamePlayer in players:
+			var player_key: String = str(player.get_multiplayer_authority())
+			if viewer.global_position.distance_squared_to(player.global_position) < max_sync_distance_squared:
+				visible_players[player_key] = players_state[player_key]
+		for zombie: GameZombie in zombies:
+			var zombie_key: String = str(zombie.get_instance_id())
+			if viewer.global_position.distance_squared_to(zombie.global_position) < max_sync_distance_squared:
+				visible_zombies[zombie_key] = zombies_state[zombie_key]
 		_receive_snapshot.rpc_id(peer_id, {
 			"tick": tick,
 			"players": visible_players,
 			"zombies": visible_zombies,
-			"portals": _portal_states(),
+			"portals": portal_states,
 		})
 
 func _find_zombie(p_zombie_id: String) -> GameZombie:
@@ -399,6 +416,7 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 					var trajectory_velocity: Vector2 = Vector2(trajectory.get("vel", Vector2.ZERO))
 					player.set_trajectory(trajectory_position, trajectory_velocity)
 		player.hp = float(player_state.get("hp", player.hp))
+		player.coins = int(player_state.get("coins", player.coins))
 
 	var zombies_state: Dictionary = snapshot.get("zombies", {}) as Dictionary
 	for raw_id: Variant in zombies_state.keys():
@@ -654,7 +672,7 @@ func sync_chest_snapshot(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func sync_pickup_snapshot(data: Dictionary) -> void:
 	if _find_pickup(str(data.get("id", ""))) == null:
-		entities.add_child(_spawn_pickup(data), true)
+		entities.call_deferred("add_child", _spawn_pickup(data), true)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -771,29 +789,30 @@ func perform_melee(attacker_id: int, direction: Vector2, damage: float = 15.0) -
 	if not NetworkManager.is_single and not NetworkManager.is_host:
 		return
 	var attacker: GamePlayer = _find_player(attacker_id)
-	if attacker == null:
+	if attacker == null or not attacker.visible or attacker.hp <= 0.0:
 		return
-	var facing: Vector2 = direction.normalized()
-	var targets: Array[Node] = get_tree().get_nodes_in_group("enemy")
-	targets.append_array(get_tree().get_nodes_in_group("player"))
-	for node: Node in targets:
-		if node == attacker or not node is Node2D:
-			continue
-		var target := node as Node2D
-		if target is GamePlayer and not (target as GamePlayer).visible:
-			continue
-		if target is GameZombie and (target as GameZombie).dead:
-			continue
-		var offset: Vector2 = target.global_position - attacker.global_position
-		if offset.length() > 50.0 or offset.length_squared() <= 0.001:
-			continue
-		if offset.normalized().dot(facing) < cos(deg_to_rad(45.0)):
-			continue
-		if target.has_method("take_damage"):
-			if target is GamePlayer:
-				(target as GamePlayer).take_contact_damage(damage, attacker.global_position, 400.0)
-			else:
-				target.call("take_damage", damage, attacker.global_position, 400.0)
+	if not attacker.current_weapon.is_empty() and attacker._current_loaded_ammo() > 0:
+		return
+	var target: Node2D = attacker.get_melee_raycast_target(direction)
+	var impact_position: Vector2 = target.global_position if target != null else attacker.global_position + direction.normalized() * 68.0
+	attacker.play_melee_effect(direction, impact_position)
+	if NetworkManager.is_host:
+		sync_melee_swing.rpc(attacker_id, direction.normalized(), impact_position)
+	if target == null:
+		return
+	var hit_damage: float = 15.0 if attacker.current_weapon.is_empty() else 10.0
+	if target is GamePlayer:
+		(target as GamePlayer).take_contact_damage(hit_damage, attacker.global_position, 400.0)
+	else:
+		target.call("take_damage", hit_damage, attacker.global_position, 400.0)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func sync_melee_swing(attacker_id: int, direction: Vector2, impact_position: Vector2) -> void:
+	var attacker: GamePlayer = _find_player(attacker_id)
+	if attacker == null or attacker.is_local:
+		return
+	attacker.play_melee_effect(direction, impact_position)
 
 
 
@@ -889,14 +908,15 @@ func throw_noise_lure(player: GamePlayer, direction: Vector2, slot_index: int) -
 		return
 	if duration <= 0.0 or radius <= 0.0 or throw_range <= 0.0:
 		return
+	var start_position: Vector2 = player.global_position
 	var landing: Vector2 = _throw_landing_position(player, direction, throw_range)
 	if not player.inventory.remove_item("noise_lure", 1):
 		return
 	var lure_id: String = "NoiseLure_%d" % _next_noise_lure_id
 	_next_noise_lure_id += 1
-	_spawn_noise_lure(landing, duration, radius, lure_id)
+	_spawn_thrown_item_visual("noise_lure", start_position, landing, "noise_lure", duration, radius, lure_id)
 	if not NetworkManager.is_single:
-		sync_noise_lure.rpc(landing, duration, radius, lure_id)
+		sync_thrown_item_visual.rpc("noise_lure", start_position, landing)
 
 
 func _spawn_noise_lure(p_position: Vector2, duration: float, radius: float, lure_id: String) -> void:
@@ -915,6 +935,15 @@ func sync_noise_lure(p_position: Vector2, duration: float, radius: float, lure_i
 	_spawn_noise_lure(p_position, duration, radius, lure_id)
 
 
+@rpc("authority", "call_remote", "reliable")
+func sync_pulse_beacon_visual(world_position: Vector2, radius: float, duration: float) -> void:
+	if not NetworkManager.is_client:
+		return
+	var effect: PulseBeacon = PULSE_BEACON_SCENE.instantiate() as PulseBeacon
+	entities.add_child(effect, true)
+	effect.show_visual_only(world_position, radius, duration)
+
+
 func throw_resin_bomb(player: GamePlayer, direction: Vector2, slot_index: int) -> void:
 	if player == null or player._dead or (not NetworkManager.is_single and not NetworkManager.is_host):
 		return
@@ -924,15 +953,46 @@ func throw_resin_bomb(player: GamePlayer, direction: Vector2, slot_index: int) -
 	var item_data: Dictionary = ItemDB.get_item("tar_bomb")
 	if not direction.is_finite() or not player.global_position.is_finite():
 		return
+	var start_position: Vector2 = player.global_position
 	var landing: Vector2 = _throw_landing_position(player, direction, float(item_data.get("throw_range", 260.0)))
 	if not player.inventory.remove_item("tar_bomb", 1):
 		return
 	UISoundManager.play_ui_sound("shoot_shotgun.wav")
 	var duration: float = float(item_data.get("puddle_duration", 6.0))
 	var slow: float = float(item_data.get("slow_multiplier", 0.55))
-	_spawn_resin_patch(landing, duration, slow)
+	_spawn_thrown_item_visual("tar_bomb", start_position, landing, "tar_bomb", duration, slow, "")
 	if not NetworkManager.is_single:
-		sync_resin_patch.rpc(landing, duration, slow)
+		sync_thrown_item_visual.rpc("tar_bomb", start_position, landing)
+
+
+func _spawn_thrown_item_visual(item_id: String, start_position: Vector2, landing: Vector2, result_kind: String, result_duration: float, result_value: float, result_id: String) -> void:
+	var visual: GameThrownItemVisual = THROWN_ITEM_VISUAL_SCENE.instantiate() as GameThrownItemVisual
+	if visual == null:
+		return
+	entities.add_child(visual, true)
+	if not visual.launch(item_id, start_position, landing):
+		visual.queue_free()
+		return
+	if not result_kind.is_empty():
+		visual.landed.connect(_on_thrown_item_landed.bind(result_kind, result_duration, result_value, result_id))
+
+
+func _on_thrown_item_landed(world_position: Vector2, result_kind: String, result_duration: float, result_value: float, result_id: String) -> void:
+	if result_kind == "tar_bomb":
+		_spawn_resin_patch(world_position, result_duration, result_value)
+		if NetworkManager.is_host:
+			sync_resin_patch.rpc(world_position, result_duration, result_value)
+	elif result_kind == "noise_lure":
+		_spawn_noise_lure(world_position, result_duration, result_value, result_id)
+		if NetworkManager.is_host:
+			sync_noise_lure.rpc(world_position, result_duration, result_value, result_id)
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_thrown_item_visual(item_id: String, start_position: Vector2, landing: Vector2) -> void:
+	if not NetworkManager.is_client:
+		return
+	_spawn_thrown_item_visual(item_id, start_position, landing, "", 0.0, 0.0, "")
 
 
 func _spawn_resin_patch(p_position: Vector2, duration: float, slow: float) -> void:
@@ -941,6 +1001,87 @@ func _spawn_resin_patch(p_position: Vector2, duration: float, slow: float) -> vo
 	patch.duration = duration
 	patch.slow_multiplier = slow
 	entities.add_child(patch, true)
+
+
+func place_inventory_item(player: GamePlayer, item_id: String, slot_index: int, aim_direction: Vector2) -> void:
+	if (not NetworkManager.is_single and not NetworkManager.is_host) or player == null:
+		return
+	if player._dead or player.hp <= 0.0 or match_finished:
+		return
+	var slot: Dictionary = player.inventory.get_slot(slot_index)
+	if str(slot.get("id", "")) != item_id or int(slot.get("amount", 0)) <= 0:
+		return
+	var item_data: Dictionary = ItemDB.get_item(item_id)
+	var placed_scene_path: String = str(item_data.get("placed_scene", ""))
+	if placed_scene_path.is_empty() or not ResourceLoader.exists(placed_scene_path):
+		push_warning("У устанавливаемого предмета '%s' нет доступной сцены" % item_id)
+		return
+	var placed_scene: PackedScene = load(placed_scene_path) as PackedScene
+	if placed_scene == null or not placed_scene.can_instantiate():
+		return
+	if not aim_direction.is_finite() or aim_direction.length_squared() <= 0.001:
+		return
+	var place_range: float = clampf(float(item_data.get("place_range", 82.0)), 32.0, 128.0)
+	var placement: Vector2 = _throw_landing_position(player, aim_direction.normalized(), place_range)
+	var placed_prefix: String = "SentryTower" if item_id == "sentry_tower" else item_id.capitalize()
+	var tower_id: String = "%s_%d" % [placed_prefix, _next_placed_item_id]
+	_next_placed_item_id += 1
+	if not player.inventory.remove_item(item_id, 1):
+		return
+	_spawn_placed_item(item_id, tower_id, placement, player.get_multiplayer_authority())
+	if NetworkManager.is_host:
+		sync_placed_item.rpc(item_id, tower_id, placement, player.get_multiplayer_authority())
+
+
+func _spawn_placed_item(item_id: String, placed_id: String, world_position: Vector2, owner_peer_id: int) -> void:
+	if entities.has_node(NodePath(placed_id)):
+		return
+	var item_data: Dictionary = ItemDB.get_item(item_id)
+	var scene_path: String = str(item_data.get("placed_scene", ""))
+	if item_data.is_empty() or scene_path.is_empty() or not ResourceLoader.exists(scene_path):
+		return
+	var packed_scene: PackedScene = load(scene_path) as PackedScene
+	if packed_scene == null or not packed_scene.can_instantiate():
+		return
+	var placed_node: Node2D = packed_scene.instantiate() as Node2D
+	if placed_node == null:
+		return
+	placed_node.name = placed_id
+	placed_node.set_multiplayer_authority(1, true)
+	if placed_node is GameSentryTower:
+		var tower: GameSentryTower = placed_node as GameSentryTower
+		tower.owner_peer_id = owner_peer_id
+		tower.attack_radius = float(item_data.get("attack_radius", tower.attack_radius))
+		tower.attack_damage = float(item_data.get("attack_damage", tower.attack_damage))
+		tower.fire_interval = float(item_data.get("fire_interval", tower.fire_interval))
+		tower.lifetime = float(item_data.get("lifetime", tower.lifetime))
+	entities.add_child(placed_node, true)
+	placed_node.global_position = world_position
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_placed_item(item_id: String, placed_id: String, world_position: Vector2, owner_peer_id: int) -> void:
+	if not NetworkManager.is_client:
+		return
+	_spawn_placed_item(item_id, placed_id, world_position, owner_peer_id)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func sync_sentry_tower_aim(tower_id: String, aim_angle: float) -> void:
+	if not NetworkManager.is_client or not is_finite(aim_angle):
+		return
+	var tower: Node2D = entities.get_node_or_null(NodePath(tower_id)) as Node2D
+	if tower != null:
+		tower.rotation = aim_angle
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_sentry_tower_removed(tower_id: String) -> void:
+	if not NetworkManager.is_client:
+		return
+	var tower: Node = entities.get_node_or_null(NodePath(tower_id))
+	if tower != null:
+		tower.queue_free()
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -961,16 +1102,18 @@ func spawn_pickup(item_id: String, amount: int, p_position: Vector2, throw_veloc
 	_next_pickup_id += 1
 	if NetworkManager.is_single:
 		var pickup: GamePickup = _spawn_pickup(data) as GamePickup
-		entities.add_child(pickup, true)
+		entities.call_deferred("add_child", pickup, true)
 		return pickup
 	# Выброшенные при смерти предметы приходят клиентам отдельным RPC,
 	# поэтому не пропускаем их через MultiplayerSpawner второй раз.
 	if throw_velocity.length_squared() > 0.0:
 		var dropped_pickup: GamePickup = _spawn_pickup(data) as GamePickup
-		entities.add_child(dropped_pickup, true)
+		entities.call_deferred("add_child", dropped_pickup, true)
 		return dropped_pickup
-	var spawned: Node = pickup_spawner.spawn(data)
-	return spawned as GamePickup
+	# MultiplayerSpawner may be triggered from an Area2D callback (for example,
+	# when a chest opens). Defer it so physics queries have finished first.
+	pickup_spawner.call_deferred("spawn", data)
+	return null
 
 
 func _spawn_pickup(data: Variant) -> Node:
@@ -993,17 +1136,18 @@ func collect_pickup_authoritative(pickup_id: String, player_id: int) -> void:
 	var pickup: GamePickup = _find_pickup(pickup_id)
 	if player == null or pickup == null or player.global_position.distance_to(pickup.global_position) > 90.0:
 		return
-	if player.inventory.add_item(pickup.item_id, pickup.amount):
+	if player.collect_item(pickup.item_id, pickup.amount):
 		if not NetworkManager.is_single:
-			confirm_pickup.rpc(pickup_id, player_id, player.inventory.make_snapshot())
+			confirm_pickup.rpc(pickup_id, player_id, player.inventory.make_snapshot(), player.coins)
 		pickup.server_collected()
 
 
 @rpc("authority", "call_remote", "reliable")
-func confirm_pickup(pickup_id: String, player_id: int, snapshot: Array) -> void:
+func confirm_pickup(pickup_id: String, player_id: int, snapshot: Array, coin_total: int) -> void:
 	var player: GamePlayer = _find_player(player_id)
 	if player != null and player_id == NetworkManager.get_local_player_id():
 		player.inventory.apply_snapshot(snapshot, player.current_weapon_slot)
+		player.coins = coin_total
 	var pickup: GamePickup = _find_pickup(pickup_id)
 	if pickup != null:
 		pickup.play_collected()
@@ -1032,19 +1176,26 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				var requested_slot: int = int(action.get("slot", -1))
 				var requested_item: Dictionary = item_player.inventory.get_slot(requested_slot)
 				var requested_id: String = str(requested_item.get("id", ""))
-				if requested_id in ["tar_bomb", "noise_lure"]:
-					var raw_direction: Variant = action.get("direction", [1.0, 0.0])
-					if not raw_direction is Array or (raw_direction as Array).size() != 2:
+				var item_data: Dictionary = ItemDB.get_item(requested_id)
+				var raw_direction: Variant = action.get("direction", [])
+				var aim_direction: Vector2 = item_player._get_aim_direction()
+				var has_direction: bool = raw_direction is Array and (raw_direction as Array).size() == 2
+				if has_direction:
+					var direction_values: Array = raw_direction as Array
+					if not (direction_values[0] is float or direction_values[0] is int) or not (direction_values[1] is float or direction_values[1] is int):
 						return
-					if not (raw_direction[0] is float or raw_direction[0] is int) or not (raw_direction[1] is float or raw_direction[1] is int):
+					aim_direction = Vector2(float(direction_values[0]), float(direction_values[1]))
+					if not aim_direction.is_finite() or aim_direction.length_squared() <= 0.001:
 						return
-					var aim_direction := Vector2(float(raw_direction[0]), float(raw_direction[1]))
-					if requested_id == "noise_lure":
-						throw_noise_lure(item_player, aim_direction, requested_slot)
-					else:
-						throw_resin_bomb(item_player, aim_direction, requested_slot)
+				var directed_action: bool = str(item_data.get("use_action", "")) in ["throw", "place"] or str(item_data.get("type", "")) in ["throwable", "placeable"]
+				if directed_action and not has_direction:
+					return
+				if requested_id == "noise_lure":
+					throw_noise_lure(item_player, aim_direction.normalized(), requested_slot)
+				elif requested_id == "tar_bomb":
+					throw_resin_bomb(item_player, aim_direction.normalized(), requested_slot)
 				else:
-					item_player.use_item(requested_slot)
+					item_player.use_item(requested_slot, aim_direction)
 		"reload":
 			var reload_player: GamePlayer = _find_player(player_id)
 			if reload_player != null:
@@ -1053,17 +1204,9 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				confirm_reload.rpc_id(player_id, weapon_id, loaded, reload_player.inventory.make_snapshot())
 		"melee_attack":
 			var attacker: GamePlayer = _find_player(player_id)
-			if attacker == null or not attacker.visible or attacker.hp <= 0.0:
+			if attacker == null or not attacker.visible or attacker.hp <= 0.0 or attacker._dead:
 				return
 			if not attacker.current_weapon.is_empty() and attacker._current_loaded_ammo() > 0:
-				return
-			var target_id: String = str(action.get("target_id", ""))
-			var target: Node2D = _find_combat_target(target_id)
-			if target == null or not target.has_method("take_damage") or target == attacker:
-				return
-			if target is GamePlayer and (not (target as GamePlayer).visible or (target as GamePlayer).hp <= 0.0):
-				return
-			if target is GameZombie and (target as GameZombie).dead:
 				return
 			var raw_direction: Variant = action.get("dir", [0.0, 0.0])
 			if not raw_direction is Array or (raw_direction as Array).size() < 2:
@@ -1073,11 +1216,15 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 				float(direction_values[0]),
 				float(direction_values[1])
 			).normalized()
-			var offset: Vector2 = target.global_position - attacker.global_position
-			var max_range: float = 60.0
-			if direction.length_squared() <= 0.001 or offset.length() > max_range or offset.length_squared() <= 0.001:
+			if not direction.is_finite() or direction.length_squared() <= 0.001:
 				return
-			if absf(direction.angle_to(offset)) > deg_to_rad(60.0):
+			# The host performs the same 4-tile raycast as the local player, so
+			# client-supplied target IDs or distances cannot bypass walls.
+			var target: Node2D = attacker.get_melee_raycast_target(direction)
+			var impact_position: Vector2 = target.global_position if target != null else attacker.global_position + direction * 68.0
+			attacker.play_melee_effect(direction, impact_position)
+			sync_melee_swing.rpc(player_id, direction, impact_position)
+			if target == null or not target.has_method("take_damage"):
 				return
 			var damage: float = 15.0 if attacker.current_weapon.is_empty() else 10.0
 			if target is GamePlayer:

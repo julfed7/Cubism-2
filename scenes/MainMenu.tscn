@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://cmhbnjyxrcyky" path="res://scripts/menu.gd" id="1"]
 [ext_resource type="Theme" uid="uid://c6m4t76cj6x0f" path="res://scenes/MenuTheme.tres" id="2"]
 [ext_resource type="Texture2D" uid="uid://buqlfjkhh0jtp" path="res://sprites/menu_screen_default1.jpg" id="3"]
-[ext_resource type="Script" path="res://scripts/glow_button.gd" id="4_glow"]
+[ext_resource type="Script" uid="uid://bupxnw2mg2urv" path="res://scripts/glow_button.gd" id="4_glow"]
 
 [node name="MainMenu" type="Control" unique_id=1114005335]
 layout_mode = 3
@@ -27,14 +27,6 @@ texture = ExtResource("3")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="Profile" type="Label" parent="."]
-offset_left = 24.0
-offset_top = 24.0
-offset_right = 420.0
-offset_bottom = 58.0
-text = "PLAYER  •  0 ПОБЕД"
-theme_override_font_sizes/font_size = 16
-
 [node name="Center" type="CenterContainer" parent="." unique_id=1651144018]
 layout_mode = 1
 anchors_preset = 15
@@ -51,30 +43,29 @@ theme_override_constants/separation = 32
 [node name="Compaign" type="Button" parent="Center/Buttons" unique_id=2071421566]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
-script = ExtResource("4_glow")
-pulse_delay = 0.0
 text = "ИГРАТЬ"
+script = ExtResource("4_glow")
 
 [node name="JoinRoom" type="Button" parent="Center/Buttons" unique_id=520919266]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+text = "НАЙТИ ИГРУ"
 script = ExtResource("4_glow")
 pulse_delay = 0.18
-text = "НАЙТИ ИГРУ"
 
 [node name="CreateRoom" type="Button" parent="Center/Buttons" unique_id=305991647]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+text = "СОЗДАТЬ КОМНАТУ"
 script = ExtResource("4_glow")
 pulse_delay = 0.36
-text = "СОЗДАТЬ КОМНАТУ"
 
 [node name="Settings" type="Button" parent="Center/Buttons" unique_id=1671240684]
 custom_minimum_size = Vector2(350, 100)
 layout_mode = 2
+text = "НАСТРОЙКИ"
 script = ExtResource("4_glow")
 pulse_delay = 0.54
-text = "НАСТРОЙКИ"
 
 [node name="Version" type="Label" parent="." unique_id=627586796]
 layout_mode = 1
@@ -86,11 +77,12 @@ offset_top = -54.0
 offset_right = 320.0
 offset_bottom = -16.0
 grow_vertical = 0
-text = "Cubism D 1.0.8"
+text = "Cubism D 1.0.20"
 
-[node name="Contracts" type="Button" parent="."]
+[node name="Contracts" type="Button" parent="." unique_id=873161326]
 custom_minimum_size = Vector2(350, 82)
 layout_mode = 1
+anchors_preset = 6
 anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
@@ -101,13 +93,12 @@ offset_right = -44.0
 offset_bottom = 41.0
 grow_horizontal = 0
 grow_vertical = 2
+text = "КОНТРАКТЫ"
 script = ExtResource("4_glow")
 pulse_delay = 0.9
-text = "КОНТРАКТЫ"
 
 [connection signal="pressed" from="Center/Buttons/Compaign" to="." method="_on_compaign_pressed"]
 [connection signal="pressed" from="Center/Buttons/JoinRoom" to="." method="_on_join_room_pressed"]
 [connection signal="pressed" from="Center/Buttons/CreateRoom" to="." method="_on_create_room_pressed"]
 [connection signal="pressed" from="Center/Buttons/Settings" to="." method="_on_settings_pressed"]
-
 [connection signal="pressed" from="Contracts" to="." method="_on_contracts_pressed"]

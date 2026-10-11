@@ -57,6 +57,26 @@ theme_override_colors/font_color = Color(0.84, 0.8, 0.97, 1)
 theme_override_font_sizes/font_size = 11
 text = "Парные порталы через 12 с"
 
+[node name="DebugPanel" type="Panel" parent="HUDRoot"]
+visible = false
+offset_left = 24.0
+offset_top = 56.0
+offset_right = 424.0
+offset_bottom = 204.0
+mouse_filter = 2
+
+[node name="DebugInfo" type="Label" parent="HUDRoot/DebugPanel"]
+offset_left = 10.0
+offset_top = 7.0
+offset_right = 414.0
+offset_bottom = 137.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.93, 1, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.04, 0.06, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+text = "FPS: --  •  кадр: -- мс\nCPU: -- мс  •  физика: -- мс\nНавигация: -- мс  •  агентов: --\nОтрисовка: -- draw calls  •  узлов: --\nRTT: --  •  сеть: --  •  peers: --\nИгроки: --  •  зомби: --  •  предметы: --"
+
 [node name="MatchPanel" type="Panel" parent="HUDRoot"]
 offset_left = 493.0
 offset_top = 16.0
@@ -94,14 +114,51 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -224.0
-offset_top = -224.0
-offset_right = -24.0
-offset_bottom = -160.0
+offset_left = -228.0
+offset_top = -128.0
+offset_right = -144.0
+offset_bottom = -44.0
 grow_horizontal = 0
 grow_vertical = 0
-theme_override_font_sizes/font_size = 16
-text = "ПЕРЕЗАРЯДКА"
+custom_minimum_size = Vector2(84, 84)
+text = ""
+
+[node name="ActionButton" type="Button" parent="HUDRoot"]
+anchors_preset = 15
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -132.0
+offset_top = -138.0
+offset_right = -28.0
+offset_bottom = -34.0
+grow_horizontal = 0
+grow_vertical = 0
+custom_minimum_size = Vector2(104, 104)
+text = ""
+tooltip_text = "Действие с выбранным предметом"
+
+[node name="ActionLabel" type="Label" parent="HUDRoot"]
+anchors_preset = 15
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -173.0
+offset_right = -16.0
+offset_bottom = -147.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.61, 1)
+theme_override_colors/font_outline_color = Color(0.03, 0.05, 0.08, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 12
+text = "УДАР"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="SelectedItemLabel" type="Label" parent="HUDRoot"]
 anchors_preset = 7
@@ -150,6 +207,18 @@ offset_right = -170.0
 offset_bottom = 72.0
 grow_horizontal = 0
 text = "Магазин: — / Запас: —"
+horizontal_alignment = 2
+
+[node name="CoinsLabel" type="Label" parent="HUDRoot"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -410.0
+offset_top = 73.0
+offset_right = -170.0
+offset_bottom = 96.0
+grow_horizontal = 0
+text = "Монеты: 0"
 horizontal_alignment = 2
 
 [node name="ExitButton" type="Button" parent="HUDRoot"]

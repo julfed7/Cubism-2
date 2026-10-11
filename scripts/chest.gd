@@ -17,6 +17,7 @@ const LOOT_TABLE: Array[Dictionary] = [
 	{"id": "pulse_beacon", "weight": 12},
 	# A tactical item: it can turn a fight, so keep its chest appearance rare.
 	{"id": "noise_lure", "weight": 3},
+	{"id": "sentry_tower", "weight": 2},
 	{"id": "ammo_pistol", "weight": 20},
 	{"id": "ammo_smg", "weight": 15},
 	{"id": "ammo_shotgun", "weight": 10},
@@ -28,9 +29,11 @@ const CONSUMABLE_LOOT_TABLE: Array[Dictionary] = [
 	{"id": "tar_bomb", "weight": 12},
 	{"id": "pulse_beacon", "weight": 12},
 	{"id": "noise_lure", "weight": 3},
+	{"id": "sentry_tower", "weight": 3},
 	{"id": "ammo_pistol", "weight": 20},
 	{"id": "ammo_smg", "weight": 15},
 	{"id": "ammo_shotgun", "weight": 10},
+	{"id": "ammo_rifle", "weight": 10},
 ]
 
 
@@ -77,7 +80,9 @@ func _spawn_loot() -> void:
 	loot.shuffle()
 	for index in loot.size():
 		var item_id := loot[index]
-		var amount := 1 if item_id in WEAPON_IDS else randi_range(1, 3)
+		var item_data: Dictionary = ItemDB.get_item(item_id)
+		var stack_limit: int = maxi(1, int(item_data.get("max_stack", 1)))
+		var amount: int = 1 if not bool(item_data.get("stackable", false)) else randi_range(1, mini(3, stack_limit))
 		var angle := TAU * float(index) / float(count) + randf_range(-0.25, 0.25)
 		var offset := Vector2.from_angle(angle) * randf_range(28.0, 58.0)
 		game.spawn_pickup(item_id, amount, global_position + offset)

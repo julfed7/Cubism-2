@@ -7,9 +7,13 @@ class_name GameHUD
 @onready var health_fill: Panel = $HUDRoot/HealthBackground/HealthFill
 @onready var weapon_label: Label = $HUDRoot/WeaponLabel
 @onready var ammo_label: Label = $HUDRoot/AmmoLabel
+@onready var coins_label: Label = $HUDRoot/CoinsLabel
 @onready var slot_container: HBoxContainer = $HUDRoot/SlotContainer
 @onready var selected_item_label: Label = $HUDRoot/SelectedItemLabel
 @onready var reload_button: Button = $HUDRoot/ReloadButton
+@onready var action_button: Button = $HUDRoot/ActionButton
+@onready var action_label: Label = $HUDRoot/ActionLabel
+@onready var virtual_joystick: Control = $HUDRoot/VirtualJoystick
 @onready var match_panel: Panel = $HUDRoot/MatchPanel
 @onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
 @onready var match_time_label: Label = $HUDRoot/MatchPanel/MatchTime
@@ -17,6 +21,8 @@ class_name GameHUD
 @onready var portal_panel: Panel = $HUDRoot/PortalPanel
 @onready var portal_status: Label = $HUDRoot/PortalPanel/PortalStatus
 @onready var portal_hint: Label = $HUDRoot/PortalPanel/PortalHint
+@onready var debug_panel: Panel = $HUDRoot/DebugPanel
+@onready var debug_info: Label = $HUDRoot/DebugPanel/DebugInfo
 
 var slot_panels: Array[Panel] = []
 var slot_icons: Array[TextureRect] = []
@@ -28,9 +34,17 @@ var _health_fill_style: StyleBoxFlat
 var _bound_inventory: Inventory
 var _bound_health: Node
 var _warned_sprite_ids: Dictionary = {}
+var _debug_update_timer: float = 0.0
+var _action_icons: Dictionary = {}
 
 
 func _ready() -> void:
+	var mobile_controls_enabled: bool = OS.has_feature("mobile") or OS.get_name() in ["Android", "iOS"]
+	virtual_joystick.visible = mobile_controls_enabled
+	virtual_joystick.mouse_filter = Control.MOUSE_FILTER_PASS if mobile_controls_enabled else Control.MOUSE_FILTER_IGNORE
+	reload_button.visible = mobile_controls_enabled
+	action_button.visible = mobile_controls_enabled
+	action_label.visible = mobile_controls_enabled
 	_normal_style = _make_panel_style(Color(0.08, 0.09, 0.11, 0.88), Color(0.45, 0.48, 0.52, 1.0), 1)
 	_selected_style = _make_panel_style(Color(0.16, 0.17, 0.19, 0.96), Color(1.0, 0.78, 0.22, 1.0), 3)
 	_health_bg_style = _make_panel_style(Color(0.18, 0.18, 0.18, 1.0), Color(0.08, 0.08, 0.08, 1.0), 1)
@@ -38,15 +52,21 @@ func _ready() -> void:
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
 	reload_button.pressed.connect(_on_reload_pressed)
-	reload_button.add_theme_stylebox_override("normal", _make_panel_style(Color("263d4f"), Color("4f91b8"), 5))
-	reload_button.add_theme_stylebox_override("hover", _make_panel_style(Color("31566e"), Color("70c4ec"), 5))
-	reload_button.add_theme_stylebox_override("pressed", _make_panel_style(Color("1b2d3b"), Color("4f91b8"), 5))
-	reload_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("25282d"), Color("3c4249"), 4))
-	reload_button.add_theme_color_override("font_color", Color("d9f3ff"))
-	reload_button.add_theme_color_override("font_disabled_color", Color("8a9096"))
+	action_button.pressed.connect(_on_action_pressed)
+	_load_action_icons()
+	_style_round_button(reload_button, Color("263d4f"), Color("4f91b8"), Color("31566e"), Color("70c4ec"), 47)
+	_style_round_button(action_button, Color("564419"), Color("efbe42"), Color("765d22"), Color("ffe184"), 56)
+	reload_button.icon = _get_action_icon("reload")
+	reload_button.tooltip_text = "Перезарядить оружие"
+	reload_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	action_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	reload_button.add_theme_constant_override("icon_max_width", 50)
+	action_button.add_theme_constant_override("icon_max_width", 60)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
 	portal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color("211450"), Color("8e68e8"), 3))
+	debug_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.025, 0.035, 0.05, 0.9), Color(0.25, 0.55, 0.68, 0.9), 1))
 	portal_panel.hide()
+	debug_panel.hide()
 	for child: Node in slot_container.get_children():
 		if child is Panel:
 			var panel: Panel = child as Panel
@@ -66,6 +86,11 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var game: Node = get_tree().current_scene
+	if debug_panel.visible:
+		_debug_update_timer -= _delta
+		if _debug_update_timer <= 0.0:
+			_debug_update_timer = 0.25
+			_update_debug_info()
 	_update_portal_hint(game)
 	if game != null and game.has_method("get_match_time_text"):
 		match_time_label.text = str(game.call("get_match_time_text"))
@@ -76,11 +101,13 @@ func _process(_delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 	_bind_player_if_needed()
+	coins_label.text = "Монеты: %d" % player.coins
 	var weapon: Dictionary = player.current_weapon
 	if weapon.is_empty():
 		weapon_label.text = "Оружие: нет"
 		ammo_label.text = "Магазин: — / Запас: —"
 		reload_button.disabled = true
+		_update_action_button()
 		return
 	var weapon_id: String = str(weapon.get("id", ""))
 	weapon_label.text = str(weapon.get("name", weapon_id))
@@ -88,6 +115,104 @@ func _process(_delta: float) -> void:
 	var reserve: int = int(player.ammo_reserve.get(weapon_id, 0))
 	ammo_label.text = "Магазин: %d / Запас: %d" % [loaded, reserve]
 	reload_button.disabled = loaded >= int(weapon.get("magazine_size", 0)) or reserve <= 0
+	_update_action_button()
+
+
+func _load_action_icons() -> void:
+	var sheet: Texture2D = load("res://sprites/ui/mobile_controls_icons.png") as Texture2D
+	if sheet == null:
+		push_warning("Не найдены иконки мобильных кнопок")
+		return
+	var cell_width: float = float(sheet.get_width()) / 4.0
+	var cell_height: float = float(sheet.get_height()) / 2.0
+	var names: Array[String] = ["reload", "shoot", "melee", "heal", "throw", "place", "use", "generic"]
+	for index: int in range(names.size()):
+		var column: int = index % 4
+		var row: int = floori(float(index) / 4.0)
+		var left: int = int(floor(float(column) * cell_width)) + 3
+		var top: int = int(floor(float(row) * cell_height)) + 3
+		var right: int = int(floor(float(column + 1) * cell_width)) - 3
+		var bottom: int = int(floor(float(row + 1) * cell_height)) - 3
+		var atlas: AtlasTexture = AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = Rect2(left, top, right - left, bottom - top)
+		_action_icons[names[index]] = atlas
+
+
+func _get_action_icon(icon_name: String) -> Texture2D:
+	var icon: Variant = _action_icons.get(icon_name, _action_icons.get("generic"))
+	return icon as Texture2D
+
+
+func _style_round_button(button: Button, normal_color: Color, normal_border: Color, hover_color: Color, hover_border: Color, radius: int) -> void:
+	var normal: StyleBoxFlat = _make_panel_style(normal_color, normal_border, 4)
+	var hover: StyleBoxFlat = _make_panel_style(hover_color, hover_border, 4)
+	var pressed: StyleBoxFlat = _make_panel_style(normal_color.darkened(0.25), hover_border, 4)
+	var disabled: StyleBoxFlat = _make_panel_style(Color("25282d"), Color("3c4249"), 3)
+	normal.set_corner_radius_all(radius)
+	hover.set_corner_radius_all(radius)
+	pressed.set_corner_radius_all(radius)
+	disabled.set_corner_radius_all(radius)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.add_theme_constant_override("h_separation", 0)
+
+
+func _update_action_button() -> void:
+	if not is_instance_valid(player):
+		return
+	var info: Dictionary = player.get_selected_action_info()
+	var icon_name: String = str(info.get("icon", "generic"))
+	action_button.icon = _get_action_icon(icon_name)
+	action_button.disabled = not bool(info.get("enabled", false))
+	action_button.tooltip_text = str(info.get("label", "Использовать"))
+	action_label.text = str(info.get("label", "ИСПОЛЬЗОВАТЬ"))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key_event: InputEventKey = event as InputEventKey
+		if key_event.pressed and not key_event.echo and key_event.keycode == KEY_F3:
+			debug_panel.visible = not debug_panel.visible
+			if debug_panel.visible:
+				_debug_update_timer = 0.25
+				_update_debug_info()
+			get_viewport().set_input_as_handled()
+
+
+func _update_debug_info() -> void:
+	var network_manager: Node = get_node_or_null("/root/NetworkManager")
+	var network_label: String = "Одиночная"
+	var rtt_label: String = "—"
+	var peer_count: int = 0
+	if network_manager != null:
+		if bool(network_manager.get("is_host")):
+			network_label = "Хост"
+		elif bool(network_manager.get("is_client")):
+			network_label = "Клиент"
+		var peers: PackedInt32Array = multiplayer.get_peers()
+		peer_count = peers.size()
+		var rtt_ms: int = int(network_manager.call("get_debug_ping_ms"))
+		if rtt_ms >= 0:
+			rtt_label = "%d мс" % rtt_ms
+	var player_count: int = get_tree().get_nodes_in_group("player").size()
+	var enemy_count: int = get_tree().get_nodes_in_group("enemy").size()
+	var pickup_count: int = get_tree().get_nodes_in_group("pickup").size()
+	var process_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var physics_ms: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	var navigation_ms: float = Performance.get_monitor(Performance.TIME_NAVIGATION_PROCESS) * 1000.0
+	var navigation_agents: int = roundi(Performance.get_monitor(Performance.NAVIGATION_2D_AGENT_COUNT))
+	var draw_calls: int = roundi(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var node_count: int = roundi(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	debug_info.text = "FPS: %d  •  кадр: %.1f мс\nCPU: %.1f мс  •  физика: %.1f мс\nНавигация: %.1f мс  •  агентов: %d\nОтрисовка: %d draw calls  •  узлов: %d\nRTT: %s  •  сеть: %s  •  peers: %d\nИгроки: %d  •  зомби: %d  •  предметы: %d" % [
+		Engine.get_frames_per_second(), 1000.0 / maxf(float(Engine.get_frames_per_second()), 1.0),
+		process_ms, physics_ms, navigation_ms, navigation_agents, draw_calls, node_count,
+		rtt_label, network_label, peer_count, player_count, enemy_count, pickup_count
+	]
 
 
 func _update_portal_hint(game: Node) -> void:
@@ -226,3 +351,8 @@ func _on_exit_button_pressed() -> void:
 func _on_reload_pressed() -> void:
 	if is_instance_valid(player):
 		player.reload()
+
+
+func _on_action_pressed() -> void:
+	if is_instance_valid(player):
+		player.perform_selected_action()

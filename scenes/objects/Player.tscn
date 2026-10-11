@@ -4,7 +4,6 @@
 [ext_resource type="Texture2D" path="res://sprites/player.png" id="2_texture"]
 [ext_resource type="Script" path="res://scripts/health.gd" id="3_health"]
 [ext_resource type="Script" path="res://scripts/inventory.gd" id="4_inventory"]
-
 [sub_resource type="RectangleShape2D" id="PlayerCollision"]
 size = Vector2(40, 40)
 
@@ -47,6 +46,13 @@ script = ExtResource("1_player")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_texture")
+texture_filter = 1
+
+[node name="MeleePivot" type="Node2D" parent="."]
+z_index = 3
+
+[node name="MeleeSlash" type="AnimatedSprite2D" parent="MeleePivot"]
+visible = false
 texture_filter = 1
 
 [node name="WeaponPivot" type="Node2D" parent="."]

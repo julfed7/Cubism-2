@@ -145,10 +145,9 @@ func _send_mm(message: Dictionary) -> void:
 func push_snapshot(snapshot: Dictionary) -> void:
 	if snapshot.is_empty():
 		return
-	var snapshot_copy: Dictionary = snapshot.duplicate(true)
 	_prev_snapshot = _last_snapshot
-	_last_snapshot = snapshot_copy
-	_snapshot_buffer.append(snapshot_copy)
+	_last_snapshot = snapshot
+	_snapshot_buffer.append(snapshot)
 	while _snapshot_buffer.size() > SNAPSHOT_BUFFER_MAX:
 		_snapshot_buffer.pop_front()
 
@@ -658,3 +657,27 @@ func get_local_player_id() -> int:
 	if multiplayer.multiplayer_peer == null:
 		return 1
 	return multiplayer.get_unique_id()
+
+
+## Средний RTT ENet в миллисекундах. На хосте возвращает худший RTT среди клиентов.
+## -1 означает, что сетевой RTT сейчас недоступен.
+func get_debug_ping_ms() -> int:
+	if is_single or _enet_peer == null or multiplayer.multiplayer_peer == null:
+		return -1
+	if is_client:
+		return _get_peer_rtt_ms(1)
+	if is_host:
+		var worst_rtt: int = -1
+		for peer_id: int in multiplayer.get_peers():
+			worst_rtt = maxi(worst_rtt, _get_peer_rtt_ms(peer_id))
+		return worst_rtt
+	return -1
+
+
+func _get_peer_rtt_ms(peer_id: int) -> int:
+	if _enet_peer == null:
+		return -1
+	var packet_peer: ENetPacketPeer = _enet_peer.get_peer(peer_id)
+	if packet_peer == null:
+		return -1
+	return roundi(float(packet_peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)))

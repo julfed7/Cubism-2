@@ -2,6 +2,8 @@ extends CharacterBody2D
 class_name GameZombie
 
 const SNAPSHOT_INTERVAL: float = 0.033
+const NAV_TARGET_REFRESH_INTERVAL: float = 0.15
+const PLAYER_TARGET_REFRESH_INTERVAL: float = 0.2
 
 @export var speed: float = 55.0
 @export var attack_range: float = 80.0
@@ -33,6 +35,9 @@ var _invuln_timer: float = 0.0
 var _last_network_health: float = 30.0
 var _noise_lures: Dictionary = {}
 var _ai_moving: bool = false
+var _nav_target_refresh_timer: float = 0.0
+var _player_target_refresh_timer: float = 0.0
+var _current_target: GamePlayer
 
 
 func _ready() -> void:
@@ -60,6 +65,8 @@ func _physics_process(delta: float) -> void:
 		return
 	if NetworkManager.is_client:
 		return
+	_nav_target_refresh_timer = maxf(0.0, _nav_target_refresh_timer - delta)
+	_player_target_refresh_timer = maxf(0.0, _player_target_refresh_timer - delta)
 	_process_hurt(delta)
 	if knockback_velocity.length_squared() > 1.0:
 		velocity = knockback_velocity
@@ -120,7 +127,10 @@ func _process_authoritative_ai() -> void:
 		is_attacking = false
 		_move_toward_position(lure.global_position, 12.0)
 		return
-	var target: GamePlayer = _find_nearest_alive_player()
+	if _player_target_refresh_timer <= 0.0 or not _is_current_target_valid():
+		_current_target = _find_nearest_alive_player()
+		_player_target_refresh_timer = PLAYER_TARGET_REFRESH_INTERVAL
+	var target: GamePlayer = _current_target
 	if target == null:
 		velocity = Vector2.ZERO
 		_update_animation(false)
@@ -167,8 +177,12 @@ func _find_noise_lure() -> NoiseLure:
 
 func _move_toward_position(at: Vector2, stopping_distance: float) -> void:
 	var offset: Vector2 = at - global_position
-	navigation_agent.target_desired_distance = stopping_distance
-	navigation_agent.target_position = at
+	if not is_equal_approx(navigation_agent.target_desired_distance, stopping_distance):
+		navigation_agent.target_desired_distance = stopping_distance
+	var target_changed: bool = navigation_agent.target_position.distance_squared_to(at) >= 24.0 * 24.0
+	if _nav_target_refresh_timer <= 0.0 or target_changed:
+		navigation_agent.target_position = at
+		_nav_target_refresh_timer = NAV_TARGET_REFRESH_INTERVAL
 	if offset.length() <= stopping_distance:
 		velocity = Vector2.ZERO
 		navigation_agent.velocity = Vector2.ZERO
@@ -206,6 +220,10 @@ func _find_nearest_alive_player() -> GamePlayer:
 			nearest_distance = distance
 			nearest = candidate
 	return nearest
+
+
+func _is_current_target_valid() -> bool:
+	return is_instance_valid(_current_target) and _current_target.visible and not _current_target.is_hidden and _current_target.hp > 0.0
 
 
 func take_damage(amount: float, source_pos: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:
