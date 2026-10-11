@@ -142,8 +142,10 @@ func _save_progress() -> Error:
 	var config := ConfigFile.new()
 	# Audio settings share this file; retain all existing sections.
 	config.load(SETTINGS_PATH)
-	config.erase_section_key("player", "brawler")
-	config.erase_section_key("progress", "trophies")
+	if config.has_section_key("player", "brawler"):
+		config.erase_section_key("player", "brawler")
+	if config.has_section_key("progress", "trophies"):
+		config.erase_section_key("progress", "trophies")
 	config.set_value("player", "nickname", nickname)
 	config.set_value("progress", "coins", coins)
 	config.set_value("progress", "wins", wins)

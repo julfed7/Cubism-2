@@ -139,7 +139,7 @@ func _update_pulse_markers() -> void:
 	if not is_instance_valid(player) or not player.is_local or player._dead or player.hp <= 0.0:
 		_clear_pulse_markers()
 		return
-	var viewer_id: int = multiplayer.get_unique_id()
+	var viewer_id: int = NetworkManager.get_local_player_id()
 	if player.get_multiplayer_authority() != viewer_id:
 		_clear_pulse_markers()
 		return

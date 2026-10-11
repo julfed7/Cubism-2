@@ -1,6 +1,7 @@
 extends Control
 
 @onready var room_name_input: LineEdit = $Center/Form/RoomNameInput
+@onready var mode_option: OptionButton = $Center/Form/ModeOption
 @onready var map_option: OptionButton = $Center/Form/MapOption
 @onready var create_button: Button = $Center/Form/Create
 @onready var status_label: Label = $Status
@@ -9,6 +10,10 @@ extends Control
 func _ready() -> void:
 	UISoundManager.bind_buttons(self)
 	UISoundManager.play_ui_sound("menu_open.wav")
+	mode_option.clear()
+	mode_option.add_item("Классический")
+	mode_option.add_item("Королевская битва")
+	mode_option.select(1)
 	map_option.clear()
 	map_option.add_item("Island")
 	map_option.add_item("City")
@@ -24,7 +29,8 @@ func _on_create_pressed() -> void:
 	NetworkManager.room_name = room_name_input.text.strip_edges()
 	var selected_map: String = map_option.get_item_text(map_option.selected)
 	status_label.text = "Создание комнаты…"
-	NetworkManager.create_room("battle_royale", selected_map, 20)
+	var selected_mode: String = "classic" if mode_option.selected == 0 else "battle_royale"
+	NetworkManager.create_room(selected_mode, selected_map, 20)
 
 
 func _on_queued() -> void:

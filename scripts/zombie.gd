@@ -74,7 +74,7 @@ func _process(delta: float) -> void:
 		return
 	if NetworkManager.is_client:
 		_process_hurt(delta)
-	if is_multiplayer_authority():
+	if not NetworkManager.is_client:
 		return
 	if not has_trajectory:
 		_apply_network_state()

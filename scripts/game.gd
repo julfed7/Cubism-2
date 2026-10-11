@@ -238,7 +238,7 @@ func _tick_match_rules(delta: float) -> void:
 			$MatchOverlay.configure(zone_center, zone_radius, true)
 	if is_battle_royale_mode() and _remaining_enemies() == 0:
 		_finish_match(true, "Все соперники выбиты")
-	var local_player: GamePlayer = _find_player(multiplayer.get_unique_id())
+	var local_player: GamePlayer = _find_player(NetworkManager.get_local_player_id())
 	if local_player == null and NetworkManager.is_single:
 		local_player = _find_player(1)
 	if match_time_left <= 0.0:
@@ -389,7 +389,7 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 			player.knockback_velocity = Vector2.ZERO
 			player.network_position_q = Vector2i(NetworkManager.quantize(server_position.x), NetworkManager.quantize(server_position.y))
 		if not movement_applied:
-			if player_id == multiplayer.get_unique_id():
+			if player_id == NetworkManager.get_local_player_id():
 				if player.global_position.distance_to(server_position) > 50.0:
 					player.global_position = server_position
 			else:
@@ -559,7 +559,7 @@ func _spawn_player(data: Variant) -> Node:
 		NetworkManager.quantize(initial_position.y)
 	)
 	player.player_died.connect(_on_player_died)
-	if NetworkManager.is_single or player_id == multiplayer.get_unique_id():
+	if NetworkManager.is_single or player_id == NetworkManager.get_local_player_id():
 		player.is_local = true
 		call_deferred("_bind_local_player", player)
 	call_deferred("_configure_synchronizers_for_entity", player)
@@ -574,7 +574,7 @@ func _spawn_position(peer: int) -> Vector2:
 
 
 func _bind_existing_local_player() -> void:
-	var player: GamePlayer = _find_player(multiplayer.get_unique_id())
+	var player: GamePlayer = _find_player(NetworkManager.get_local_player_id())
 	if player != null:
 		_bind_local_player(player)
 
@@ -707,7 +707,7 @@ func request_shoot(direction: Vector2) -> void:
 
 
 func spawn_local_bullet(origin: Vector2, direction: Vector2, weapon: Dictionary) -> void:
-	var owner_id: int = 1 if NetworkManager.is_single else multiplayer.get_unique_id()
+	var owner_id: int = 1 if NetworkManager.is_single else NetworkManager.get_local_player_id()
 	_spawn_projectile(owner_id, origin, direction, weapon)
 	if str(weapon.get("weapon_type", "")) == "shotgun":
 		for angle_degrees: float in [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0, 0.0]:
@@ -803,7 +803,7 @@ func _on_player_died(player_id: int) -> void:
 	var player: GamePlayer = _find_player(player_id)
 	if player == null:
 		return
-	if is_battle_royale_mode() and player_id == multiplayer.get_unique_id():
+	if is_battle_royale_mode() and player_id == NetworkManager.get_local_player_id():
 		_finish_match(false, "Ты выбыл из арены")
 	if not NetworkManager.is_single:
 		on_player_died.rpc(player_id)
@@ -811,7 +811,7 @@ func _on_player_died(player_id: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func on_player_died(player_id: int) -> void:
-	if is_battle_royale_mode() and player_id == multiplayer.get_unique_id():
+	if is_battle_royale_mode() and player_id == NetworkManager.get_local_player_id():
 		_finish_match(false, "Ты выбыл из арены")
 	var player: GamePlayer = _find_player(player_id)
 	if player != null:
@@ -1002,7 +1002,7 @@ func collect_pickup_authoritative(pickup_id: String, player_id: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func confirm_pickup(pickup_id: String, player_id: int, snapshot: Array) -> void:
 	var player: GamePlayer = _find_player(player_id)
-	if player != null and player_id == multiplayer.get_unique_id():
+	if player != null and player_id == NetworkManager.get_local_player_id():
 		player.inventory.apply_snapshot(snapshot, player.current_weapon_slot)
 	var pickup: GamePickup = _find_pickup(pickup_id)
 	if pickup != null:
@@ -1088,7 +1088,7 @@ func handle_network_action(player_id: int, action: Dictionary) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func confirm_reload(weapon_id: String, loaded: int, snapshot: Array) -> void:
-	var player: GamePlayer = _find_player(multiplayer.get_unique_id())
+	var player: GamePlayer = _find_player(NetworkManager.get_local_player_id())
 	if player != null:
 		player.magazine[weapon_id] = loaded
 		player.inventory.apply_snapshot(snapshot, player.current_weapon_slot)

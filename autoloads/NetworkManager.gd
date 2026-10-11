@@ -651,3 +651,10 @@ func _fail(message: String) -> void:
 	network_error.emit(message)
 	connection_failed.emit()
 	UISoundManager.play_ui_sound("error.wav")
+
+
+# Offline matches use the same player identity as a local host.
+func get_local_player_id() -> int:
+	if multiplayer.multiplayer_peer == null:
+		return 1
+	return multiplayer.get_unique_id()

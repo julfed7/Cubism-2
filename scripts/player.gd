@@ -56,7 +56,7 @@ var _pulse_detections: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
-	is_local = NetworkManager.is_single or get_multiplayer_authority() == multiplayer.get_unique_id()
+	is_local = NetworkManager.is_single or get_multiplayer_authority() == NetworkManager.get_local_player_id()
 	$Camera2D.enabled = is_local
 	health.died.connect(_on_died)
 	health.health_changed.connect(_on_health_changed)
@@ -186,7 +186,7 @@ func _set_hidden_state(value: bool) -> void:
 
 
 func _update_stealth_visual() -> void:
-	var revealed: bool = is_pulse_detected_by(multiplayer.get_unique_id())
+	var revealed: bool = is_pulse_detected_by(NetworkManager.get_local_player_id())
 	var concealed: bool = is_hidden and not is_local and not revealed
 	# Root visible is server-replicated and used by combat; keep it unchanged.
 	$Sprite2D.visible = not concealed
@@ -204,7 +204,7 @@ func grant_pulse_detection(viewer_id: int, source_id: int, duration: float) -> v
 	if _dead or hp <= 0.0 or viewer_id <= 0 or not is_finite(duration) or duration <= 0.0:
 		return
 	_store_pulse_detection(viewer_id, source_id, duration)
-	if NetworkManager.is_host and viewer_id != multiplayer.get_unique_id() and multiplayer.get_peers().has(viewer_id):
+	if NetworkManager.is_host and viewer_id != NetworkManager.get_local_player_id() and multiplayer.get_peers().has(viewer_id):
 		sync_pulse_detection.rpc_id(viewer_id, source_id, duration)
 
 
@@ -212,7 +212,7 @@ func revoke_pulse_detection(viewer_id: int, source_id: int) -> void:
 	if not NetworkManager.is_single and not NetworkManager.is_host:
 		return
 	_remove_pulse_detection(viewer_id, source_id)
-	if NetworkManager.is_host and viewer_id != multiplayer.get_unique_id() and multiplayer.get_peers().has(viewer_id):
+	if NetworkManager.is_host and viewer_id != NetworkManager.get_local_player_id() and multiplayer.get_peers().has(viewer_id):
 		sync_pulse_detection.rpc_id(viewer_id, source_id, 0.0)
 
 
@@ -223,7 +223,7 @@ func sync_pulse_detection(source_id: int, duration: float) -> void:
 		return
 	if not is_finite(duration) or duration < 0.0:
 		return
-	var viewer_id: int = multiplayer.get_unique_id()
+	var viewer_id: int = NetworkManager.get_local_player_id()
 	if duration == 0.0:
 		_remove_pulse_detection(viewer_id, source_id)
 	elif not _dead and hp > 0.0:
