@@ -9,18 +9,11 @@ class_name GameHUD
 @onready var ammo_label: Label = $HUDRoot/AmmoLabel
 @onready var slot_container: HBoxContainer = $HUDRoot/SlotContainer
 @onready var selected_item_label: Label = $HUDRoot/SelectedItemLabel
-@onready var detection_panel: Panel = $HUDRoot/DetectionPanel
-@onready var detection_value: Label = $HUDRoot/DetectionPanel/DetectionValue
-@onready var detection_fill: Panel = $HUDRoot/DetectionPanel/DetectionBackground/DetectionFill
 @onready var reload_button: Button = $HUDRoot/ReloadButton
 @onready var match_panel: Panel = $HUDRoot/MatchPanel
 @onready var match_mode_label: Label = $HUDRoot/MatchPanel/MatchMode
 @onready var match_time_label: Label = $HUDRoot/MatchPanel/MatchTime
 @onready var match_zone_label: Label = $HUDRoot/MatchPanel/MatchZone
-@onready var pulse_markers: Control = $HUDRoot/PulseMarkers
-@onready var pulse_marker_template: Label = $HUDRoot/PulseMarkers/MarkerTemplate
-@onready var pulse_panel: Panel = $HUDRoot/PulsePanel
-@onready var pulse_status: Label = $HUDRoot/PulsePanel/PulseStatus
 @onready var portal_panel: Panel = $HUDRoot/PortalPanel
 @onready var portal_status: Label = $HUDRoot/PortalPanel/PortalStatus
 @onready var portal_hint: Label = $HUDRoot/PortalPanel/PortalHint
@@ -32,12 +25,9 @@ var _normal_style: StyleBoxFlat
 var _selected_style: StyleBoxFlat
 var _health_bg_style: StyleBoxFlat
 var _health_fill_style: StyleBoxFlat
-var _detection_fill_style: StyleBoxFlat
 var _bound_inventory: Inventory
 var _bound_health: Node
 var _warned_sprite_ids: Dictionary = {}
-var _pulse_marker_labels: Dictionary = {}
-var _pulse_viewer: GamePlayer
 
 
 func _ready() -> void:
@@ -45,11 +35,8 @@ func _ready() -> void:
 	_selected_style = _make_panel_style(Color(0.16, 0.17, 0.19, 0.96), Color(1.0, 0.78, 0.22, 1.0), 3)
 	_health_bg_style = _make_panel_style(Color(0.18, 0.18, 0.18, 1.0), Color(0.08, 0.08, 0.08, 1.0), 1)
 	_health_fill_style = _make_panel_style(Color(0.8, 0.2, 0.2, 1.0), Color(0.8, 0.2, 0.2, 1.0), 0)
-	_detection_fill_style = _make_panel_style(Color("48b85b"), Color("48b85b"), 0)
 	health_background.add_theme_stylebox_override("panel", _health_bg_style)
 	health_fill.add_theme_stylebox_override("panel", _health_fill_style)
-	detection_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.06, 0.92), Color(0.25, 0.45, 0.29, 1.0), 2))
-	detection_panel.get_node("DetectionBackground").add_theme_stylebox_override("panel", _make_panel_style(Color(0.08, 0.1, 0.08, 0.94), Color(0.22, 0.32, 0.24, 1.0), 1))
 	reload_button.pressed.connect(_on_reload_pressed)
 	reload_button.add_theme_stylebox_override("normal", _make_panel_style(Color("263d4f"), Color("4f91b8"), 5))
 	reload_button.add_theme_stylebox_override("hover", _make_panel_style(Color("31566e"), Color("70c4ec"), 5))
@@ -57,14 +44,7 @@ func _ready() -> void:
 	reload_button.add_theme_stylebox_override("disabled", _make_panel_style(Color("25282d"), Color("3c4249"), 4))
 	reload_button.add_theme_color_override("font_color", Color("d9f3ff"))
 	reload_button.add_theme_color_override("font_disabled_color", Color("8a9096"))
-	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 	match_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.04, 0.08, 0.14, 0.94), Color(0.16, 0.62, 0.82, 1.0), 2))
-	var pulse_style: StyleBoxFlat = _make_panel_style(Color("12354d"), Color("081522"), 3)
-	pulse_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
-	pulse_style.shadow_size = 3
-	pulse_style.shadow_offset = Vector2(0.0, 3.0)
-	pulse_panel.add_theme_stylebox_override("panel", pulse_style)
-	pulse_marker_template.add_theme_stylebox_override("normal", pulse_style)
 	portal_panel.add_theme_stylebox_override("panel", _make_panel_style(Color("211450"), Color("8e68e8"), 3))
 	portal_panel.hide()
 	for child: Node in slot_container.get_children():
@@ -85,7 +65,6 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	_update_pulse_markers()
 	var game: Node = get_tree().current_scene
 	_update_portal_hint(game)
 	if game != null and game.has_method("get_match_time_text"):
@@ -97,7 +76,6 @@ func _process(_delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 	_bind_player_if_needed()
-	_update_detection_indicator()
 	var weapon: Dictionary = player.current_weapon
 	if weapon.is_empty():
 		weapon_label.text = "Оружие: нет"
@@ -133,100 +111,9 @@ func _update_portal_hint(game: Node) -> void:
 		portal_status.add_theme_color_override("font_color", Color("a98cff"))
 		portal_hint.add_theme_color_override("font_color", Color("d7ccf8"))
 
-func _update_pulse_markers() -> void:
-	# Query only the viewport owner's private detections, even on the host.
-	# Markers stay in the local HUD, outside replicated player nodes.
-	if not is_instance_valid(player) or not player.is_local or player._dead or player.hp <= 0.0:
-		_clear_pulse_markers()
-		return
-	var viewer_id: int = NetworkManager.get_local_player_id()
-	if player.get_multiplayer_authority() != viewer_id:
-		_clear_pulse_markers()
-		return
-	if _pulse_viewer != player:
-		_clear_pulse_markers()
-		_pulse_viewer = player
-	var active_ids: Dictionary = {}
-	var found_new_target: bool = false
-	for node: Node in get_tree().get_nodes_in_group("player"):
-		var target: GamePlayer = node as GamePlayer
-		if target == null or target == player or not target.is_pulse_detected_by(viewer_id):
-			continue
-		var target_id: int = target.get_instance_id()
-		active_ids[target_id] = true
-		if not _pulse_marker_labels.has(target_id):
-			var new_marker: Label = pulse_marker_template.duplicate() as Label
-			pulse_markers.add_child(new_marker)
-			new_marker.visible = true
-			new_marker.pivot_offset = new_marker.size * 0.5
-			new_marker.scale = Vector2(0.75, 0.75)
-			new_marker.modulate.a = 0.0
-			var tween: Tween = new_marker.create_tween().set_parallel(true)
-			tween.tween_property(new_marker, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			tween.tween_property(new_marker, "modulate:a", 1.0, 0.12)
-			_pulse_marker_labels[target_id] = new_marker
-			found_new_target = true
-		var marker: Label = _pulse_marker_labels[target_id] as Label
-		# Convert world to HUD coordinates to follow camera movement and zoom.
-		var screen_position: Vector2 = target.get_global_transform_with_canvas() * Vector2(0.0, -38.0)
-		var hud_position: Vector2 = pulse_markers.get_global_transform_with_canvas().affine_inverse() * screen_position
-		marker.position = hud_position - Vector2(marker.size.x * 0.5, marker.size.y)
-		marker.visible = Rect2(Vector2.ZERO, pulse_markers.size).has_point(hud_position)
-	for target_id: Variant in _pulse_marker_labels.keys():
-		if not active_ids.has(target_id):
-			var expired_marker: Label = _pulse_marker_labels[target_id] as Label
-			expired_marker.hide()
-			expired_marker.queue_free()
-			_pulse_marker_labels.erase(target_id)
-	pulse_panel.visible = not active_ids.is_empty()
-	pulse_status.text = "МАЯК: ЦЕЛЕЙ %d" % active_ids.size()
-	if found_new_target:
-		# One short cue per batch instead of one per opponent or frame.
-		UISoundManager.play_ui_sound("connect.wav")
-
-
-func _clear_pulse_markers() -> void:
-	for value: Variant in _pulse_marker_labels.values():
-		var marker: Label = value as Label
-		marker.hide()
-		marker.queue_free()
-	_pulse_marker_labels.clear()
-	_pulse_viewer = null
-	pulse_panel.hide()
-
-
 func update_ammo(ammo: int, reserve: int) -> void:
 	if is_instance_valid(ammo_label):
 		ammo_label.text = "Магазин: %d / Запас: %d" % [ammo, reserve]
-
-
-func _update_detection_indicator() -> void:
-	if not is_instance_valid(player):
-		return
-	const detection_distance: float = 450.0
-	var nearest_distance: float = INF
-	for node: Node in get_tree().get_nodes_in_group("enemy"):
-		if not node is GameZombie:
-			continue
-		var zombie := node as GameZombie
-		if zombie.dead or zombie.hp <= 0.0:
-			continue
-		nearest_distance = minf(nearest_distance, player.global_position.distance_to(zombie.global_position))
-
-	var ratio: float = 0.0
-	if not player.is_hidden and nearest_distance < detection_distance:
-		ratio = clampf(1.0 - nearest_distance / detection_distance, 0.0, 1.0)
-	detection_fill.offset_right = 176.0 * ratio
-	if player.is_hidden:
-		detection_value.text = "СКРЫТНОСТЬ: В КУСТАХ"
-		_detection_fill_style.bg_color = Color("48b85b")
-	elif nearest_distance == INF:
-		detection_value.text = "ОБНАРУЖЕНИЕ: НЕТ ВРАГОВ"
-		_detection_fill_style.bg_color = Color("48b85b")
-	else:
-		detection_value.text = "ОБНАРУЖЕНИЕ: %d%%" % roundi(ratio * 100.0)
-		_detection_fill_style.bg_color = Color("d14a43") if ratio > 0.65 else Color("e0ad45") if ratio > 0.25 else Color("48b85b")
-	detection_fill.add_theme_stylebox_override("panel", _detection_fill_style)
 
 
 func _bind_player_if_needed() -> void:
