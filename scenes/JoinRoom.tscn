@@ -33,7 +33,7 @@ offset_top = 24.0
 offset_bottom = 82.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 40
-text = "ВЫБЕРИ КАРТУ"
+text = "ВЫБЕРИ РЕЖИМ И КАРТУ"
 horizontal_alignment = 1
 
 [node name="Center" type="CenterContainer" parent="."]
@@ -97,6 +97,16 @@ theme_override_font_sizes/font_size = 30
 text = "CITY"
 horizontal_alignment = 1
 
+[node name="ModeLabel" type="Label" parent="Center/MapScreen"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+text = "РЕЖИМ ИГРЫ"
+horizontal_alignment = 1
+
+[node name="ModeOption" type="OptionButton" parent="Center/MapScreen"]
+custom_minimum_size = Vector2(420, 48)
+layout_mode = 2
+
 [node name="MapOption" type="OptionButton" parent="Center/MapScreen"]
 visible = false
 layout_mode = 2
@@ -126,5 +136,6 @@ horizontal_alignment = 1
 
 [connection signal="pressed" from="Center/MapScreen/Cards/Island" to="." method="_on_island_pressed"]
 [connection signal="pressed" from="Center/MapScreen/Cards/City" to="." method="_on_city_pressed"]
+[connection signal="item_selected" from="Center/MapScreen/ModeOption" to="." method="_on_mode_selected"]
 [connection signal="pressed" from="Center/MapScreen/Play" to="." method="_on_play_pressed"]
 [connection signal="pressed" from="Back" to="." method="_on_back_pressed"]
